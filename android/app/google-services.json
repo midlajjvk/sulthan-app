@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "400182855595",
+    "project_id": "sult-b9b82",
+    "storage_bucket": "sult-b9b82.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:400182855595:android:351258463276440247f4ee",
+        "android_client_info": {
+          "package_name": "com.sulthan.sulthan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyuSlYnSPiOKeWPQm6Rmk3zWTxvcBl5KY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
