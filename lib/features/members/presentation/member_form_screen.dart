@@ -1,11 +1,7 @@
-import 'dart:developer' as dev;
-
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../../database/app_database.dart';
 import '../../../models/member_model.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/common_widgets.dart';
@@ -13,7 +9,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/formatters.dart';
 
 class MemberFormScreen extends ConsumerStatefulWidget {
-  final int? id;
+  final String? id;
   const MemberFormScreen({super.key, this.id});
 
   @override
@@ -32,7 +28,7 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
   String _status = 'Active';
   String? _photoPath;
   bool _loading = false;
-  Member? _existing;
+  MemberModel? _existing;
 
   @override
   void initState() {
@@ -41,7 +37,8 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
   }
 
   Future<void> _load() async {
-    final m = await ref.read(dbProvider).getMemberById(widget.id!);
+    final repo = ref.read(memberRepositoryProvider);
+    final m = await repo.getMemberById(widget.id!);
     if (m != null && mounted) {
       setState(() {
         _existing = m;
@@ -52,7 +49,7 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
         _dob = m.dateOfBirth;
         _bloodGroup = m.bloodGroup;
         _status = m.status;
-        _photoPath = m.photoPath;
+        _photoPath = m.photoUrl;
         _additionalInfo.text = m.additionalInfo ?? '';
       });
     }
@@ -60,67 +57,53 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
 
   @override
   void dispose() {
-    _name.dispose(); _mobile.dispose();
-    _email.dispose(); _address.dispose();
+    _name.dispose();
+    _mobile.dispose();
+    _email.dispose();
+    _address.dispose();
     _additionalInfo.dispose();
     super.dispose();
   }
 
   Future<void> _pickPhoto() async {
     final picker = ImagePicker();
-    final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final img =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (img != null) setState(() => _photoPath = img.path);
   }
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     setState(() => _loading = true);
-    final db = ref.read(dbProvider);
-    final firestoreRepo = ref.read(memberRepositoryProvider);
+    final repo = ref.read(memberRepositoryProvider);
 
     try {
-      // ── Uniqueness check ────────────────────────────────────────────────
-      final existing = await db.getMemberByMobile(_mobile.text.trim());
+      // Uniqueness check — mobile must not belong to a different member
+      final existing = await repo.getMemberByMobile(_mobile.text.trim());
       if (existing != null && existing.id != widget.id) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Mobile number already registered')));
+            const SnackBar(
+                content: Text('Mobile number already registered')),
+          );
         }
         return;
       }
 
-      // ── Write to Drift (primary) ────────────────────────────────────────
-      if (_existing == null) {
-        // INSERT — get the new auto-increment id back
-        final newId = await db.insertMember(MembersCompanion.insert(
-          name: _name.text.trim(),
-          mobile: _mobile.text.trim(),
-          email: Value(_email.text.trim().isEmpty ? null : _email.text.trim()),
-          address: Value(_address.text.trim().isEmpty ? null : _address.text.trim()),
-          dateOfBirth: Value(_dob),
-          bloodGroup: Value(_bloodGroup),
-          photoPath: Value(_photoPath),
-          status: Value(_status),
-          additionalInfo: Value(_additionalInfo.text.trim().isEmpty
-              ? null
-              : _additionalInfo.text.trim()),
-        ));
+      final now = DateTime.now();
 
-        // ── Mirror to Firestore (background) ───────────────────────────────
-        // Uses the Drift int id converted to String as the Firestore doc ID
-        // so the two records are always linked by the same identifier.
-        // Errors are logged but never surfaced to the user — Drift is the
-        // source of truth; Firestore is the cloud backup.
-        final now = DateTime.now();
+      if (_existing == null) {
+        // INSERT
         final model = MemberModel(
-          id: newId.toString(),
+          id: '', // Firestore generates the ID
           name: _name.text.trim(),
           mobile: _mobile.text.trim(),
           email: _email.text.trim().isEmpty ? null : _email.text.trim(),
-          address: _address.text.trim().isEmpty ? null : _address.text.trim(),
+          address:
+              _address.text.trim().isEmpty ? null : _address.text.trim(),
           dateOfBirth: _dob,
           bloodGroup: _bloodGroup,
-          photoUrl: null, // local photo path has no meaning in Firestore
+          photoUrl: null, // local path has no meaning in Firestore
           status: _status,
           additionalInfo: _additionalInfo.text.trim().isEmpty
               ? null
@@ -128,62 +111,36 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
           createdAt: now,
           updatedAt: now,
         );
-        // ── Mirror to Firestore ────────────────────────────────────────────
-        // Awaited so errors are visible in logs during development.
-        try {
-          await firestoreRepo.addMember(model);
-          dev.log('Firestore addMember OK — id=${model.id} name=${model.name}',
-              name: 'MemberForm');
-        } catch (e) {
-          dev.log('Firestore addMember FAILED — id=${model.id}: $e',
-              name: 'MemberForm', error: e);
-        }
+        await repo.addMember(model);
       } else {
         // UPDATE
-        await db.updateMember(MembersCompanion(
-          id: Value(_existing!.id),
-          name: Value(_name.text.trim()),
-          mobile: Value(_mobile.text.trim()),
-          email: Value(_email.text.trim().isEmpty ? null : _email.text.trim()),
-          address: Value(_address.text.trim().isEmpty ? null : _address.text.trim()),
-          dateOfBirth: Value(_dob),
-          bloodGroup: Value(_bloodGroup),
-          photoPath: Value(_photoPath),
-          status: Value(_status),
-          additionalInfo: Value(_additionalInfo.text.trim().isEmpty
-              ? null
-              : _additionalInfo.text.trim()),
-          updatedAt: Value(DateTime.now()),
-        ));
-
-        // ── Mirror update to Firestore (background) ─────────────────────────
         final model = MemberModel(
-          id: _existing!.id.toString(),
+          id: _existing!.id,
           name: _name.text.trim(),
           mobile: _mobile.text.trim(),
           email: _email.text.trim().isEmpty ? null : _email.text.trim(),
-          address: _address.text.trim().isEmpty ? null : _address.text.trim(),
+          address:
+              _address.text.trim().isEmpty ? null : _address.text.trim(),
           dateOfBirth: _dob,
           bloodGroup: _bloodGroup,
-          photoUrl: null,
+          photoUrl: _existing!.photoUrl, // preserve existing remote URL
           status: _status,
           additionalInfo: _additionalInfo.text.trim().isEmpty
               ? null
               : _additionalInfo.text.trim(),
-          updatedAt: DateTime.now(),
+          createdAt: _existing!.createdAt,
+          updatedAt: now,
         );
-        // ── Mirror update to Firestore ─────────────────────────────────────
-        try {
-          await firestoreRepo.updateMember(model);
-          dev.log('Firestore updateMember OK — id=${model.id}',
-              name: 'MemberForm');
-        } catch (e) {
-          dev.log('Firestore updateMember FAILED — id=${model.id}: $e',
-              name: 'MemberForm', error: e);
-        }
+        await repo.updateMember(model);
       }
 
       if (mounted) context.pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save member: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -191,16 +148,24 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
 
   Future<void> _delete() async {
     final ok = await confirmDelete(context,
-        message: 'Delete ${_existing?.name}? Payment history will be kept.');
+        message:
+            'Delete ${_existing?.name}? Payment history will be kept.');
     if (ok == true && mounted) {
-      final firestoreRepo = ref.read(memberRepositoryProvider);
-      await ref.read(dbProvider).deleteMember(_existing!.id);
-      // Mirror delete to Firestore in background.
-      firestoreRepo.deleteMember(_existing!.id.toString()).catchError((Object e) {
-        dev.log('Firestore deleteMember failed (non-fatal): $e',
-            name: 'MemberForm');
-      });
-      if (mounted) context.go('/members');
+      setState(() => _loading = true);
+      try {
+        await ref
+            .read(memberRepositoryProvider)
+            .deleteMember(_existing!.id);
+        if (mounted) context.go('/members');
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete member: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _loading = false);
+      }
     }
   }
 
@@ -216,7 +181,7 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
           if (isEdit)
             IconButton(
               icon: Icon(Icons.delete_outline, color: cs.error),
-              onPressed: _delete,
+              onPressed: _loading ? null : _delete,
             ),
         ],
       ),
@@ -300,7 +265,9 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
                   style: TextStyle(
                       color: _dob != null
                           ? null
-                          : Theme.of(context).colorScheme.onSurfaceVariant),
+                          : Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant),
                 ),
               ),
             ),
@@ -341,8 +308,10 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
               onPressed: _loading ? null : _save,
               child: _loading
                   ? const SizedBox(
-                      height: 20, width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                      height: 20,
+                      width: 20,
+                      child:
+                          CircularProgressIndicator(strokeWidth: 2))
                   : Text(isEdit ? 'Save Changes' : 'Add Member'),
             ),
           ],

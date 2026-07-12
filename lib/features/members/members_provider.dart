@@ -1,16 +1,22 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../database/app_database.dart';
+import '../../models/member_model.dart';
 import '../../shared/providers/core_providers.dart';
 
-final membersStreamProvider = StreamProvider.autoDispose<List<Member>>((ref) =>
-    ref.read(dbProvider).watchMembers());
+final membersStreamProvider =
+    StreamProvider.autoDispose<List<MemberModel>>((ref) =>
+        ref.watch(memberRepositoryProvider).watchMembers());
 
-final memberSearchProvider = StateProvider.autoDispose<String>((_) => '');
-final memberFilterStatusProvider = StateProvider.autoDispose<String?>((_) => null);
-final memberFilterBloodProvider = StateProvider.autoDispose<String?>((_) => null);
+final memberSearchProvider =
+    StateProvider.autoDispose<String>((_) => '');
+
+final memberFilterStatusProvider =
+    StateProvider.autoDispose<String?>((_) => null);
+
+final memberFilterBloodProvider =
+    StateProvider.autoDispose<String?>((_) => null);
 
 final filteredMembersProvider =
-    Provider.autoDispose<AsyncValue<List<Member>>>((ref) {
+    Provider.autoDispose<AsyncValue<List<MemberModel>>>((ref) {
   final all = ref.watch(membersStreamProvider);
   final q = ref.watch(memberSearchProvider).toLowerCase();
   final status = ref.watch(memberFilterStatusProvider);

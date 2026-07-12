@@ -21,11 +21,6 @@ dependencies:
   # State management
   flutter_riverpod: ^2.5.1
 
-  # Database
-  drift: ^2.18.0
-  drift_flutter: ^0.2.1
-  sqlite3_flutter_libs: ^0.5.24
-
   # Navigation
   go_router: ^14.2.7
 
@@ -49,19 +44,32 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-  drift_dev: ^2.18.0
-  build_runner: ">=2.4.12 <2.5.0"
   flutter_launcher_icons: ^0.14.3
-
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/images/app_icon.jpg"
-  min_sdk_android: 21
-  web:
-    generate: false
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/image.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/images/image.png"
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false
+
+flutter_native_splash:
+  color: "#000000"
+  image: assets/images/splash_logo.png
+
+  android_12:
+    color: "#000000"
+    image: assets/images/splash_logo.png
+    icon_background_color: "#000000"

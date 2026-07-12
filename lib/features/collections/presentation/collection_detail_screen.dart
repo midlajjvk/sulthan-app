@@ -1,12 +1,13 @@
 import 'dart:developer' as dev;
 
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../collections_provider.dart';
-import '../../../database/app_database.dart';
+import '../../../models/collection_model.dart';
+import '../../../models/member_model.dart';
 import '../../../models/payment_model.dart';
+import '../../../repositories/firebase/payment_repository.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/common_widgets.dart';
 import '../../../core/utils/formatters.dart';
@@ -14,7 +15,7 @@ import '../../../core/utils/collection_pdf.dart';
 import '../../../core/constants/app_constants.dart';
 
 class CollectionDetailScreen extends ConsumerWidget {
-  final int id;
+  final String id;
   const CollectionDetailScreen({super.key, required this.id});
 
   @override
@@ -22,8 +23,10 @@ class CollectionDetailScreen extends ConsumerWidget {
     final initAsync = ref.watch(collectionMembersInitProvider(id));
     final paymentsAsync = ref.watch(collectionPaymentsProvider(id));
 
-    return FutureBuilder<Collection?>(
-      future: ref.read(dbProvider).getCollectionById(id),
+    return FutureBuilder<CollectionModel?>(
+      future: ref
+          .read(collectionRepositoryProvider)
+          .getCollectionById(id),
       builder: (ctx, snap) {
         if (!snap.hasData) return const Scaffold(body: LoadingView());
         final col = snap.data;
@@ -37,7 +40,8 @@ class CollectionDetailScreen extends ConsumerWidget {
             actions: [
               IconButton(
                 icon: const Icon(Icons.edit_outlined),
-                onPressed: () => context.push('/collections/$id/edit'),
+                onPressed: () =>
+                    context.push('/collections/$id/edit'),
               ),
             ],
           ),
@@ -63,9 +67,9 @@ class CollectionDetailScreen extends ConsumerWidget {
 // ── Body ──────────────────────────────────────────────────────────────────────
 
 class _CollectionBody extends ConsumerWidget {
-  final int collectionId;
-  final Collection collection;
-  final List<Payment> payments;
+  final String collectionId;
+  final CollectionModel collection;
+  final List<PaymentModel> payments;
 
   const _CollectionBody({
     required this.collectionId,
@@ -77,29 +81,31 @@ class _CollectionBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
 
-    final paid =
-        payments.where((p) => p.status == AppConstants.statusPaid).length;
-    final partial =
-        payments.where((p) => p.status == AppConstants.statusPartial).length;
-    final pending =
-        payments.where((p) => p.status == AppConstants.statusPending).length;
+    final paid = payments
+        .where((p) => p.status == AppConstants.statusPaid)
+        .length;
+    final partial = payments
+        .where((p) => p.status == AppConstants.statusPartial)
+        .length;
+    final pending = payments
+        .where((p) => p.status == AppConstants.statusPending)
+        .length;
     final collected = payments
         .where((p) => p.status != AppConstants.statusPending)
         .fold(0.0, (s, p) => s + p.paidAmount + (p.fineAmount ?? 0));
-    final totalFines = payments
-        .fold(0.0, (s, p) => s + (p.fineAmount ?? 0));
+    final totalFines =
+        payments.fold(0.0, (s, p) => s + (p.fineAmount ?? 0));
     final target = collection.amountPerMember * payments.length;
 
-    // Load all members in one shot so search works without per-row futures
-    return FutureBuilder<List<Member>>(
-      future: ref.read(dbProvider).getMembers(),
+    return FutureBuilder<List<MemberModel>>(
+      future: ref.read(memberRepositoryProvider).getMembers(),
       builder: (ctx, mSnap) {
         final members = mSnap.data ?? [];
         final memberMap = {for (final m in members) m.id: m};
 
         return Column(
           children: [
-            // ── Summary card ────────────────────────────────────────────
+            // Summary card
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Card(
@@ -109,13 +115,16 @@ class _CollectionBody extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        collection.type == AppConstants.typeMonthly &&
+                        collection.type ==
+                                    AppConstants.typeMonthly &&
                                 collection.month != null
-                            ? Fmt.monthYearOf(
-                                collection.month!, collection.year!)
-                            : Fmt.date(collection.dateCreated),
+                            ? Fmt.monthYearOf(collection.month!,
+                                collection.year!)
+                            : Fmt.date(collection.dateCreated ??
+                                DateTime.now()),
                         style: TextStyle(
-                            color: cs.onSurfaceVariant, fontSize: 12),
+                            color: cs.onSurfaceVariant,
+                            fontSize: 12),
                       ),
                       const SizedBox(height: 6),
                       Text(Fmt.money(collected),
@@ -131,19 +140,22 @@ class _CollectionBody extends ConsumerWidget {
                       const SizedBox(height: 10),
                       if (payments.isNotEmpty && target > 0)
                         LinearProgressIndicator(
-                          value: (collected / target).clamp(0.0, 1.0),
+                          value: (collected / target)
+                              .clamp(0.0, 1.0),
                           borderRadius: BorderRadius.circular(4),
                         ),
                       const SizedBox(height: 10),
                       Row(children: [
                         _Stat('Paid', '$paid', Colors.green),
                         const SizedBox(width: 12),
-                        _Stat('Partial', '$partial', Colors.orange),
+                        _Stat('Partial', '$partial',
+                            Colors.orange),
                         const SizedBox(width: 12),
                         _Stat('Pending', '$pending', cs.error),
                         if (totalFines > 0) ...[
                           const SizedBox(width: 12),
-                          _Stat('Fines', Fmt.money(totalFines), Colors.red),
+                          _Stat('Fines',
+                              Fmt.money(totalFines), Colors.red),
                         ],
                       ]),
                     ],
@@ -152,8 +164,6 @@ class _CollectionBody extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 8),
-
-            // ── Member list with search + filter ────────────────────────
             Expanded(
               child: _MemberSearchList(
                 payments: payments,
@@ -172,9 +182,9 @@ class _CollectionBody extends ConsumerWidget {
 // ── Member search + filter list ───────────────────────────────────────────────
 
 class _MemberSearchList extends StatefulWidget {
-  final List<Payment> payments;
-  final Collection collection;
-  final Map<int, Member> memberMap;
+  final List<PaymentModel> payments;
+  final CollectionModel collection;
+  final Map<String, MemberModel> memberMap;
   final WidgetRef ref;
 
   const _MemberSearchList({
@@ -199,11 +209,9 @@ class _MemberSearchListState extends State<_MemberSearchList> {
     super.dispose();
   }
 
-  List<Payment> get _visible {
+  List<PaymentModel> get _visible {
     return widget.payments.where((p) {
-      // Status filter
       if (_filter != 'All' && p.status != _filter) return false;
-      // Name search
       if (_query.isNotEmpty) {
         final member = widget.memberMap[p.memberId];
         final name = member?.name.toLowerCase() ?? '';
@@ -236,7 +244,6 @@ class _MemberSearchListState extends State<_MemberSearchList> {
 
     return Column(
       children: [
-        // ── Search bar ──────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
@@ -258,8 +265,6 @@ class _MemberSearchListState extends State<_MemberSearchList> {
             onChanged: (v) => setState(() => _query = v),
           ),
         ),
-
-        // ── Status filter chips ─────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Row(
@@ -273,49 +278,51 @@ class _MemberSearchListState extends State<_MemberSearchList> {
                         label: 'All ($allCount)',
                         selected: _filter == 'All',
                         color: cs.primary,
-                        onTap: () => setState(() => _filter = 'All'),
+                        onTap: () =>
+                            setState(() => _filter = 'All'),
                       ),
                       const SizedBox(width: 8),
                       _FilterChip(
                         label: 'Paid ($paidCount)',
-                        selected: _filter == AppConstants.statusPaid,
+                        selected:
+                            _filter == AppConstants.statusPaid,
                         color: Colors.green,
-                        onTap: () => setState(
-                            () => _filter = AppConstants.statusPaid),
+                        onTap: () => setState(() =>
+                            _filter = AppConstants.statusPaid),
                       ),
                       const SizedBox(width: 8),
                       _FilterChip(
                         label: 'Partial ($partialCount)',
-                        selected: _filter == AppConstants.statusPartial,
+                        selected: _filter ==
+                            AppConstants.statusPartial,
                         color: Colors.orange,
-                        onTap: () => setState(
-                            () => _filter = AppConstants.statusPartial),
+                        onTap: () => setState(() => _filter =
+                            AppConstants.statusPartial),
                       ),
                       const SizedBox(width: 8),
                       _FilterChip(
                         label: 'Pending ($pendingCount)',
-                        selected: _filter == AppConstants.statusPending,
+                        selected: _filter ==
+                            AppConstants.statusPending,
                         color: Colors.red,
-                        onTap: () => setState(
-                            () => _filter = AppConstants.statusPending),
+                        onTap: () => setState(() => _filter =
+                            AppConstants.statusPending),
                       ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              // ── Download button ────────────────────────────────────────
               _CollectionDownloadButton(
                 collection: widget.collection,
                 payments: widget.payments,
                 memberMap: widget.memberMap,
-                filterStatus: _filter == 'All' ? null : _filter,
+                filterStatus:
+                    _filter == 'All' ? null : _filter,
               ),
             ],
           ),
         ),
-
-        // ── Results count hint ──────────────────────────────────────────
         if (_query.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -328,8 +335,6 @@ class _MemberSearchListState extends State<_MemberSearchList> {
               ),
             ),
           ),
-
-        // ── Member list ─────────────────────────────────────────────────
         Expanded(
           child: visible.isEmpty
               ? EmptyView(
@@ -339,7 +344,8 @@ class _MemberSearchListState extends State<_MemberSearchList> {
                       : 'No members found',
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                  padding:
+                      const EdgeInsets.fromLTRB(16, 0, 16, 80),
                   itemCount: visible.length,
                   itemBuilder: (ctx, i) => _PaymentRow(
                     payment: visible[i],
@@ -378,10 +384,14 @@ class _FilterChip extends StatelessWidget {
         padding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? color : color.withValues(alpha: 0.08),
+          color: selected
+              ? color
+              : color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: selected ? color : color.withValues(alpha: 0.3)),
+              color: selected
+                  ? color
+                  : color.withValues(alpha: 0.3)),
         ),
         child: Text(
           label,
@@ -425,9 +435,9 @@ class _Stat extends StatelessWidget {
 // ── Payment row ───────────────────────────────────────────────────────────────
 
 class _PaymentRow extends StatelessWidget {
-  final Payment payment;
-  final Member? member;
-  final Collection collection;
+  final PaymentModel payment;
+  final MemberModel? member;
+  final CollectionModel collection;
   final WidgetRef ref;
 
   const _PaymentRow({
@@ -441,21 +451,24 @@ class _PaymentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isPending = payment.status == AppConstants.statusPending;
-    final statusColor = payment.status == AppConstants.statusPaid
-        ? Colors.green
-        : payment.status == AppConstants.statusPartial
-            ? Colors.orange
-            : cs.error;
+    final statusColor =
+        payment.status == AppConstants.statusPaid
+            ? Colors.green
+            : payment.status == AppConstants.statusPartial
+                ? Colors.orange
+                : cs.error;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 6),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: statusColor.withValues(alpha: 0.15),
+          backgroundColor:
+              statusColor.withValues(alpha: 0.15),
           child: Text(
             member?.name[0].toUpperCase() ?? '?',
             style: TextStyle(
-                color: statusColor, fontWeight: FontWeight.bold),
+                color: statusColor,
+                fontWeight: FontWeight.bold),
           ),
         ),
         title: Text(
@@ -472,22 +485,23 @@ class _PaymentRow extends StatelessWidget {
                   : payment.paymentDate != null
                       ? Fmt.date(payment.paymentDate!)
                       : 'No date',
-              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+              style: TextStyle(
+                  fontSize: 11, color: cs.onSurfaceVariant),
             ),
-            // Advance indicator
             if (payment.advanceEndMonth != null)
               Container(
                 margin: const EdgeInsets.only(top: 2),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
                   color: Colors.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
-                      color: Colors.blue.withValues(alpha: 0.3)),
+                      color:
+                          Colors.blue.withValues(alpha: 0.3)),
                 ),
                 child: Text(
-                  'Paid until ${AppDatabase.monthName(payment.advanceEndMonth!)} ${payment.advanceEndYear}',
+                  'Paid until ${CollectionUtils.monthName(payment.advanceEndMonth!)} ${payment.advanceEndYear}',
                   style: const TextStyle(
                       fontSize: 10,
                       color: Colors.blue,
@@ -503,13 +517,16 @@ class _PaymentRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(Fmt.money(payment.paidAmount),
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                if (payment.fineAmount != null && payment.fineAmount! > 0)
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold)),
+                if (payment.fineAmount != null &&
+                    payment.fineAmount! > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 5, vertical: 1),
                     decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.1),
+                      color:
+                          Colors.red.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
@@ -526,7 +543,8 @@ class _PaymentRow extends StatelessWidget {
           const SizedBox(width: 8),
           StatusBadge(payment.status),
           const SizedBox(width: 4),
-          Icon(Icons.edit_outlined, size: 16, color: cs.onSurfaceVariant),
+          Icon(Icons.edit_outlined,
+              size: 16, color: cs.onSurfaceVariant),
         ]),
         onTap: () => _editPayment(context, ref),
       ),
@@ -553,9 +571,9 @@ class _PaymentRow extends StatelessWidget {
 // ── Edit payment bottom sheet ─────────────────────────────────────────────────
 
 class _EditPaymentSheet extends StatefulWidget {
-  final Payment payment;
-  final Member? member;
-  final Collection collection;
+  final PaymentModel payment;
+  final MemberModel? member;
+  final CollectionModel collection;
   final WidgetRef ref;
 
   const _EditPaymentSheet({
@@ -581,12 +599,11 @@ class _EditPaymentSheetState extends State<_EditPaymentSheet> {
       widget.collection.type == AppConstants.typeMonthly &&
       widget.collection.month != null;
 
-  // Recalculate range whenever amount changes
   ({int months, int endMonth, int endYear})? get _advanceRange {
     if (!_isMonthly) return null;
     final amt = double.tryParse(_amountCtrl.text);
     if (amt == null || amt <= 0) return null;
-    return AppDatabase.calcAdvanceRange(
+    return CollectionUtils.calcAdvanceRange(
       startMonth: widget.collection.month!,
       startYear: widget.collection.year!,
       paidAmount: amt,
@@ -598,16 +615,13 @@ class _EditPaymentSheetState extends State<_EditPaymentSheet> {
   void initState() {
     super.initState();
     _status = widget.payment.status;
-    // Pre-fill existing advance amount or normal amount
     final existingAmount = widget.payment.paidAmount > 0
         ? widget.payment.paidAmount.toStringAsFixed(0)
         : '';
     _amountCtrl = TextEditingController(text: existingAmount);
     _amountCtrl.addListener(() => setState(() {}));
     _paymentDate = widget.payment.paymentDate ?? DateTime.now();
-    // Pre-toggle advance if this was already an advance payment
     _isAdvance = widget.payment.advanceStartMonth != null;
-    // Pre-fill fine if exists
     final existingFine = widget.payment.fineAmount;
     _fineCtrl = TextEditingController(
         text: existingFine != null && existingFine > 0
@@ -626,101 +640,70 @@ class _EditPaymentSheetState extends State<_EditPaymentSheet> {
   Future<void> _save(BuildContext context) async {
     final nav = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final db = widget.ref.read(dbProvider);
     final payRepo = widget.ref.read(paymentRepositoryProvider);
 
-    if (_isAdvance && _isMonthly) {
-      final amt = double.tryParse(_amountCtrl.text) ?? 0.0;
-      if (amt <= 0) {
+    try {
+      if (_isAdvance && _isMonthly) {
+        final amt = double.tryParse(_amountCtrl.text) ?? 0.0;
+        if (amt <= 0) {
+          messenger.showSnackBar(
+              const SnackBar(content: Text('Enter a valid amount')));
+          return;
+        }
+        await payRepo.saveAdvancePayment(
+          paymentId: widget.payment.id,
+          memberId: widget.payment.memberId,
+          collectionId: widget.payment.collectionId,
+          startMonth: widget.collection.month!,
+          startYear: widget.collection.year!,
+          paidAmount: amt,
+          amountPerMonth: widget.collection.amountPerMember,
+          paymentDate: _paymentDate,
+        );
+        final range = _advanceRange!;
+        nav.pop();
+        messenger.showSnackBar(SnackBar(
+          content: Text(
+            'Advance saved: ${range.months} month${range.months == 1 ? '' : 's'}'
+            ' — Paid until ${CollectionUtils.monthName(range.endMonth)} ${range.endYear}',
+          ),
+          backgroundColor: Colors.green,
+        ));
+      } else {
+        final amt = _status == AppConstants.statusPending
+            ? 0.0
+            : double.tryParse(_amountCtrl.text) ?? 0.0;
+        final fine =
+            _showFine && _status != AppConstants.statusPending
+                ? (double.tryParse(_fineCtrl.text) ?? 0.0)
+                : 0.0;
+
+        final updated = PaymentModel(
+          id: widget.payment.id,
+          memberId: widget.payment.memberId,
+          collectionId: widget.payment.collectionId,
+          paidAmount: amt,
+          status: _status,
+          paymentDate: _status != AppConstants.statusPending
+              ? _paymentDate
+              : null,
+          fineAmount: fine > 0 ? fine : null,
+          advanceStartMonth: null,
+          advanceStartYear: null,
+          advanceEndMonth: null,
+          advanceEndYear: null,
+          notes: null,
+          createdAt: widget.payment.createdAt,
+        );
+        await payRepo.updatePayment(updated);
+        nav.pop();
+      }
+    } catch (e) {
+      dev.log('updatePayment failed: $e', name: 'EditPaymentSheet', error: e);
+      if (mounted) {
         messenger.showSnackBar(
-            const SnackBar(content: Text('Enter a valid amount')));
-        return;
+            SnackBar(content: Text('Failed to save: $e')));
       }
-      await db.saveAdvancePayment(
-        paymentId: widget.payment.id,
-        memberId: widget.payment.memberId,
-        startMonth: widget.collection.month!,
-        startYear: widget.collection.year!,
-        paidAmount: amt,
-        amountPerMonth: widget.collection.amountPerMember,
-        paymentDate: _paymentDate,
-      );
-
-      // Mirror advance payment to Firestore
-      final range = _advanceRange!;
-      final pm = PaymentModel(
-        id: widget.payment.id.toString(),
-        memberId: widget.payment.memberId.toString(),
-        collectionId: widget.payment.collectionId.toString(),
-        paidAmount: amt,
-        status: AppConstants.statusPaid,
-        paymentDate: _paymentDate,
-        advanceStartMonth: widget.collection.month,
-        advanceStartYear: widget.collection.year,
-        advanceEndMonth: range.endMonth,
-        advanceEndYear: range.endYear,
-        notes:
-            'Advance payment (Paid until ${AppDatabase.monthName(range.endMonth)} ${range.endYear})',
-      );
-      try {
-        await payRepo.updatePayment(pm);
-        dev.log('Firestore advance payment OK — id=${widget.payment.id}',
-            name: 'PaymentSheet');
-      } catch (e) {
-        dev.log('Firestore advance payment FAILED: $e',
-            name: 'PaymentSheet', error: e);
-      }
-
-      nav.pop();
-      messenger.showSnackBar(SnackBar(
-        content: Text(
-          'Advance saved: ${range.months} month${range.months == 1 ? '' : 's'}'
-          ' — Paid until ${AppDatabase.monthName(range.endMonth)} ${range.endYear}',
-        ),
-        backgroundColor: Colors.green,
-      ));
-    } else {
-      final amt = _status == AppConstants.statusPending
-          ? 0.0
-          : double.tryParse(_amountCtrl.text) ?? 0.0;
-      final fine = _showFine && _status != AppConstants.statusPending
-          ? (double.tryParse(_fineCtrl.text) ?? 0.0)
-          : 0.0;
-
-      await db.updatePayment(PaymentsCompanion(
-        id: Value(widget.payment.id),
-        status: Value(_status),
-        paidAmount: Value(amt),
-        paymentDate: Value(
-            _status != AppConstants.statusPending ? _paymentDate : null),
-        fineAmount: Value(fine > 0 ? fine : null),
-        advanceStartMonth: const Value(null),
-        advanceStartYear: const Value(null),
-        advanceEndMonth: const Value(null),
-        advanceEndYear: const Value(null),
-        notes: const Value(null),
-      ));
-
-      // Mirror payment update to Firestore
-      final pm = PaymentModel(
-        id: widget.payment.id.toString(),
-        memberId: widget.payment.memberId.toString(),
-        collectionId: widget.payment.collectionId.toString(),
-        paidAmount: amt,
-        status: _status,
-        paymentDate: _status != AppConstants.statusPending ? _paymentDate : null,
-        fineAmount: fine > 0 ? fine : null,
-      );
-      try {
-        await payRepo.updatePayment(pm);
-        dev.log('Firestore updatePayment OK — id=${widget.payment.id}',
-            name: 'PaymentSheet');
-      } catch (e) {
-        dev.log('Firestore updatePayment FAILED: $e',
-            name: 'PaymentSheet', error: e);
-      }
-
-      nav.pop();
     }
   }
 
@@ -733,372 +716,409 @@ class _EditPaymentSheetState extends State<_EditPaymentSheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(
           20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Header ────────────────────────────────────────────────────
-          Row(children: [
-            if (name != null) ...[
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: cs.primaryContainer,
-                child: Text(name[0].toUpperCase(),
-                    style: TextStyle(
-                        color: cs.onPrimaryContainer,
-                        fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(width: 12),
-            ],
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Update Payment',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold)),
-                if (name != null)
-                  Text(name,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(children: [
+              if (name != null) ...[
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: cs.primaryContainer,
+                  child: Text(name[0].toUpperCase(),
                       style: TextStyle(
-                          color: cs.onSurfaceVariant, fontSize: 13)),
+                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(width: 12),
               ],
-            ),
-          ]),
-          const SizedBox(height: 16),
-
-          // ── Advance toggle (monthly only) ─────────────────────────────
-          if (_isMonthly) ...[
-            Container(
-              decoration: BoxDecoration(
-                color: _isAdvance
-                    ? cs.primaryContainer.withValues(alpha: 0.4)
-                    : cs.surfaceContainerHighest.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: _isAdvance
-                        ? cs.primary.withValues(alpha: 0.5)
-                        : cs.outline.withValues(alpha: 0.2)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Update Payment',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold)),
+                  if (name != null)
+                    Text(name,
+                        style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 13)),
+                ],
               ),
-              child: SwitchListTile(
-                dense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14),
-                title: Text('Advance Payment',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: _isAdvance ? cs.primary : null,
-                        fontSize: 14)),
-                subtitle: const Text(
-                    'Auto-calculates months from amount paid',
-                    style: TextStyle(fontSize: 11)),
-                secondary: Icon(Icons.fast_forward_rounded,
-                    color:
-                        _isAdvance ? cs.primary : cs.onSurfaceVariant),
-                value: _isAdvance,
-                onChanged: (v) => setState(() {
-                  _isAdvance = v;
-                  if (v) {
-                    _status = AppConstants.statusPaid;
-                    // Pre-fill full amount if empty
-                    if (_amountCtrl.text.isEmpty) {
+            ]),
+            const SizedBox(height: 16),
+
+            // Advance toggle (monthly only)
+            if (_isMonthly) ...[
+              Container(
+                decoration: BoxDecoration(
+                  color: _isAdvance
+                      ? cs.primaryContainer.withValues(alpha: 0.4)
+                      : cs.surfaceContainerHighest
+                          .withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: _isAdvance
+                          ? cs.primary.withValues(alpha: 0.5)
+                          : cs.outline.withValues(alpha: 0.2)),
+                ),
+                child: SwitchListTile(
+                  dense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14),
+                  title: Text('Advance Payment',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: _isAdvance ? cs.primary : null,
+                          fontSize: 14)),
+                  subtitle: const Text(
+                      'Auto-calculates months from amount paid',
+                      style: TextStyle(fontSize: 11)),
+                  secondary: Icon(Icons.fast_forward_rounded,
+                      color: _isAdvance
+                          ? cs.primary
+                          : cs.onSurfaceVariant),
+                  value: _isAdvance,
+                  onChanged: (v) => setState(() {
+                    _isAdvance = v;
+                    if (v) {
+                      _status = AppConstants.statusPaid;
+                      if (_amountCtrl.text.isEmpty) {
+                        _amountCtrl.text = widget.collection
+                            .amountPerMember
+                            .toStringAsFixed(0);
+                      }
+                    }
+                  }),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // Status selector (hidden when advance is on)
+            if (!_isAdvance) ...[
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                      value: AppConstants.statusPending,
+                      label: Text('Pending')),
+                  ButtonSegment(
+                      value: AppConstants.statusPartial,
+                      label: Text('Partial')),
+                  ButtonSegment(
+                      value: AppConstants.statusPaid,
+                      label: Text('Paid')),
+                ],
+                selected: {_status},
+                onSelectionChanged: (s) {
+                  setState(() {
+                    _status = s.first;
+                    if (_status == AppConstants.statusPaid) {
                       _amountCtrl.text = widget.collection
                           .amountPerMember
                           .toStringAsFixed(0);
+                    } else if (_status ==
+                        AppConstants.statusPending) {
+                      _amountCtrl.text = '';
                     }
-                  }
-                }),
+                  });
+                },
               ),
-            ),
-            const SizedBox(height: 12),
-          ],
+              const SizedBox(height: 14),
+            ],
 
-          // ── Status selector (hidden when advance is on) ───────────────
-          if (!_isAdvance) ...[
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                    value: AppConstants.statusPending,
-                    label: Text('Pending')),
-                ButtonSegment(
-                    value: AppConstants.statusPartial,
-                    label: Text('Partial')),
-                ButtonSegment(
-                    value: AppConstants.statusPaid,
-                    label: Text('Paid')),
-              ],
-              selected: {_status},
-              onSelectionChanged: (s) {
-                setState(() {
-                  _status = s.first;
-                  if (_status == AppConstants.statusPaid) {
-                    _amountCtrl.text = widget.collection
-                        .amountPerMember
-                        .toStringAsFixed(0);
-                  } else if (_status == AppConstants.statusPending) {
-                    _amountCtrl.text = '';
+            // Amount + date (shown when paid/partial or advance)
+            if (_isAdvance ||
+                _status != AppConstants.statusPending) ...[
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _paymentDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) {
+                    setState(() => _paymentDate = picked);
                   }
-                });
-              },
-            ),
-            const SizedBox(height: 14),
-          ],
-
-          // ── Amount field (shown when paid/partial or advance) ─────────
-          if (_isAdvance || _status != AppConstants.statusPending) ...[
-            // Date picker
-            InkWell(
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _paymentDate,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime.now(),
-                );
-                if (picked != null) setState(() => _paymentDate = picked);
-              },
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Payment Date',
-                  prefixIcon: Icon(Icons.calendar_today_outlined),
-                  isDense: true,
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Payment Date',
+                    prefixIcon:
+                        Icon(Icons.calendar_today_outlined),
+                    isDense: true,
+                  ),
+                  child: Text(Fmt.date(_paymentDate),
+                      style: const TextStyle(fontSize: 14)),
                 ),
-                child: Text(Fmt.date(_paymentDate),
-                    style: const TextStyle(fontSize: 14)),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _amountCtrl,
-              decoration: InputDecoration(
-                labelText: _isAdvance
-                    ? 'Total Amount Paid'
-                    : 'Amount Paid',
-                prefixText: '${AppConstants.currency} ',
-                helperText: _isAdvance
-                    ? 'e.g. ${AppConstants.currency}${(widget.collection.amountPerMember * 3).toStringAsFixed(0)} = 3 months'
-                    : null,
+              const SizedBox(height: 12),
+              TextField(
+                controller: _amountCtrl,
+                decoration: InputDecoration(
+                  labelText: _isAdvance
+                      ? 'Total Amount Paid'
+                      : 'Amount Paid',
+                  prefixText: '${AppConstants.currency} ',
+                  helperText: _isAdvance
+                      ? 'e.g. ${AppConstants.currency}${(widget.collection.amountPerMember * 3).toStringAsFixed(0)} = 3 months'
+                      : null,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true),
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-            ),
-            const SizedBox(height: 12),
-          ],
+              const SizedBox(height: 12),
+            ],
 
-          // ── Live advance preview banner ────────────────────────────────
-          if (_isAdvance && _isMonthly)
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              child: range != null
-                  ? Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                            color: Colors.green.withValues(alpha: 0.3)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Icon(Icons.check_circle_outline,
-                                color: Colors.green, size: 16),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${range.months} month${range.months == 1 ? '' : 's'} covered',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+            // Advance preview banner
+            if (_isAdvance && _isMonthly)
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                child: range != null
+                    ? Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: Colors.green
+                                  .withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              const Icon(
+                                  Icons.check_circle_outline,
                                   color: Colors.green,
-                                  fontSize: 13),
+                                  size: 16),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${range.months} month${range.months == 1 ? '' : 's'} covered',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.green,
+                                    fontSize: 13),
+                              ),
+                            ]),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${CollectionUtils.monthName(widget.collection.month!)} ${widget.collection.year}'
+                              ' → ${CollectionUtils.monthName(range.endMonth)} ${range.endYear}',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: cs.onSurfaceVariant),
                             ),
-                          ]),
-                          const SizedBox(height: 3),
-                          Text(
-                            '${AppDatabase.monthName(widget.collection.month!)} ${widget.collection.year}'
-                            ' → ${AppDatabase.monthName(range.endMonth)} ${range.endYear}',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: cs.onSurfaceVariant),
-                          ),
-                          Text(
-                            'Paid until ${AppDatabase.monthName(range.endMonth)} ${range.endYear}',
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.green,
-                                fontWeight: FontWeight.w500),
-                          ),
-                        ],
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
+                            Text(
+                              'Paid until ${CollectionUtils.monthName(range.endMonth)} ${range.endYear}',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
 
-          // ── Fine section (monthly only, when paid/partial, not advance) ─
-          if (_isMonthly && !_isAdvance &&
-              _status != AppConstants.statusPending) ...[
-            const Divider(height: 20),
-            // Toggle row
-            Row(
-              children: [
-                Icon(Icons.gavel_outlined,
-                    size: 16, color: Colors.red.shade400),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Late Fine',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          color: _showFine ? Colors.red : null)),
-                ),
-                Switch(
-                  value: _showFine,
-                  activeThumbColor: Colors.red,
-                  onChanged: (v) => setState(() {
-                    _showFine = v;
-                    if (!v) _fineCtrl.clear();
-                  }),
-                ),
-              ],
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeInOut,
-              child: _showFine
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Auto-calc helper chips
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                Text('Days late:  ',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.red.shade300)),
-                                ...[1, 2, 3, 4, 5, 6, 7, 10, 15, 30]
-                                    .map((days) {
-                                  final fine =
-                                      (days * AppConstants.finePerDay)
-                                          .toStringAsFixed(0);
-                                  return Padding(
-                                    padding: const EdgeInsets.only(
-                                        right: 6),
-                                    child: GestureDetector(
-                                      onTap: () => setState(() =>
-                                          _fineCtrl.text = fine),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 5),
-                                        decoration: BoxDecoration(
-                                          color: _fineCtrl.text == fine
-                                              ? Colors.red
-                                              : Colors.red.withValues(
-                                                  alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          border: Border.all(
-                                              color: Colors.red
-                                                  .withValues(alpha: 0.4)),
-                                        ),
-                                        child: Text(
-                                          '$days d  (${AppConstants.currency}$fine)',
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color: _fineCtrl.text == fine
-                                                  ? Colors.white
-                                                  : Colors.red),
+            // Fine section (monthly only, when paid/partial, not advance)
+            if (_isMonthly &&
+                !_isAdvance &&
+                _status != AppConstants.statusPending) ...[
+              const Divider(height: 20),
+              Row(
+                children: [
+                  Icon(Icons.gavel_outlined,
+                      size: 16, color: Colors.red.shade400),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Late Fine',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color:
+                                _showFine ? Colors.red : null)),
+                  ),
+                  Switch(
+                    value: _showFine,
+                    activeThumbColor: Colors.red,
+                    onChanged: (v) => setState(() {
+                      _showFine = v;
+                      if (!v) _fineCtrl.clear();
+                    }),
+                  ),
+                ],
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeInOut,
+                child: _showFine
+                    ? Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(bottom: 8),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  Text('Days late:  ',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors
+                                              .red.shade300)),
+                                  ...[
+                                    1, 2, 3, 4, 5,
+                                    6, 7, 10, 15, 30
+                                  ].map((days) {
+                                    final fine = (days *
+                                            AppConstants.finePerDay)
+                                        .toStringAsFixed(0);
+                                    return Padding(
+                                      padding: const EdgeInsets
+                                          .only(right: 6),
+                                      child: GestureDetector(
+                                        onTap: () => setState(
+                                            () => _fineCtrl
+                                                .text = fine),
+                                        child: Container(
+                                          padding: const EdgeInsets
+                                              .symmetric(
+                                              horizontal: 10,
+                                              vertical: 5),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                _fineCtrl.text ==
+                                                        fine
+                                                    ? Colors.red
+                                                    : Colors.red
+                                                        .withValues(
+                                                            alpha:
+                                                                0.1),
+                                            borderRadius:
+                                                BorderRadius
+                                                    .circular(16),
+                                            border: Border.all(
+                                                color: Colors.red
+                                                    .withValues(
+                                                        alpha: 0.4)),
+                                          ),
+                                          child: Text(
+                                            '$days d  (${AppConstants.currency}$fine)',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight:
+                                                    FontWeight.w600,
+                                                color:
+                                                    _fineCtrl.text ==
+                                                            fine
+                                                        ? Colors.white
+                                                        : Colors.red),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  );
-                                }),
-                              ],
+                                    );
+                                  }),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        TextField(
-                          controller: _fineCtrl,
-                          decoration: InputDecoration(
-                            labelText: 'Fine Amount',
-                            prefixText: '${AppConstants.currency} ',
-                            prefixIcon: const Icon(Icons.warning_amber_outlined,
-                                color: Colors.red),
-                            helperText:
-                                '${AppConstants.currency}${AppConstants.finePerDay.toStringAsFixed(0)} per day after 5th',
-                            helperStyle:
-                                TextStyle(color: Colors.red.shade300),
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        // Total preview
-                        if (_fineCtrl.text.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.06),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                  color: Colors.red.withValues(alpha: 0.2)),
+                          TextField(
+                            controller: _fineCtrl,
+                            decoration: InputDecoration(
+                              labelText: 'Fine Amount',
+                              prefixText:
+                                  '${AppConstants.currency} ',
+                              prefixIcon: const Icon(
+                                  Icons.warning_amber_outlined,
+                                  color: Colors.red),
+                              helperText:
+                                  '${AppConstants.currency}${AppConstants.finePerDay.toStringAsFixed(0)} per day after 5th',
+                              helperStyle: TextStyle(
+                                  color: Colors.red.shade300),
                             ),
-                            child: Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Monthly + Fine',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.red.shade700)),
-                                Text(
-                                  '${AppConstants.currency}${(double.tryParse(_amountCtrl.text) ?? 0) + (double.tryParse(_fineCtrl.text) ?? 0)}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.red,
-                                      fontSize: 14),
-                                ),
-                              ],
-                            ),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
+                            onChanged: (_) => setState(() {}),
                           ),
+                          if (_fineCtrl.text.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.red
+                                    .withValues(alpha: 0.06),
+                                borderRadius:
+                                    BorderRadius.circular(8),
+                                border: Border.all(
+                                    color: Colors.red
+                                        .withValues(alpha: 0.2)),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('Monthly + Fine',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color:
+                                              Colors.red.shade700)),
+                                  Text(
+                                    '${AppConstants.currency}${(double.tryParse(_amountCtrl.text) ?? 0) + (double.tryParse(_fineCtrl.text) ?? 0)}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.red,
+                                        fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
                         ],
-                        const SizedBox(height: 8),
-                      ],
-                    )
-                  : const SizedBox.shrink(),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+
+            // Save button
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => _save(context),
+                child: Text(_isAdvance
+                    ? 'Save Advance Payment'
+                    : 'Save'),
+              ),
             ),
           ],
-
-          // ── Save button ───────────────────────────────────────────────
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () => _save(context),
-              child: Text(_isAdvance ? 'Save Advance Payment' : 'Save'),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
-// ── Collection payment PDF download button ────────────────────────────────────
+// ── Collection PDF download button ────────────────────────────────────────────
 
 class _CollectionDownloadButton extends StatefulWidget {
-  final Collection collection;
-  final List<Payment> payments;
-  final Map<int, Member> memberMap;
-  final String? filterStatus; // null = all
+  final CollectionModel collection;
+  final List<PaymentModel> payments;
+  final Map<String, MemberModel> memberMap;
+  final String? filterStatus;
 
   const _CollectionDownloadButton({
     required this.collection,
@@ -1155,7 +1175,8 @@ class _CollectionDownloadButtonState
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withValues(alpha: 0.5),
+                  color: cs.primaryContainer
+                      .withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                       color: cs.primary.withValues(alpha: 0.3)),
@@ -1166,13 +1187,11 @@ class _CollectionDownloadButtonState
                     Icon(Icons.picture_as_pdf_outlined,
                         size: 16, color: cs.primary),
                     const SizedBox(width: 4),
-                    Text(
-                      'PDF',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: cs.primary),
-                    ),
+                    Text('PDF',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary)),
                   ],
                 ),
               ),

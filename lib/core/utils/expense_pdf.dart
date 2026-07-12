@@ -1,12 +1,12 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import '../../database/app_database.dart';
+import '../../models/expense_model.dart';
 import 'formatters.dart';
 import '../constants/app_constants.dart';
 
 /// Builds and triggers the system share/save dialog for an expenses PDF.
-Future<void> downloadExpensesPdf(List<Expense> expenses) async {
+Future<void> downloadExpensesPdf(List<ExpenseModel> expenses) async {
   // ── Load Unicode-capable fonts from Google Fonts ──────────────────────
   final regular = await PdfGoogleFonts.notoSansRegular();
   final bold = await PdfGoogleFonts.notoSansBold();
@@ -26,7 +26,7 @@ Future<void> downloadExpensesPdf(List<Expense> expenses) async {
       pw.TextStyle(font: bold, fontSize: 12, color: PdfColors.grey800);
 
   // ── Group by category ─────────────────────────────────────────────────
-  final Map<String, List<Expense>> byCategory = {};
+  final Map<String, List<ExpenseModel>> byCategory = {};
   for (final e in expenses) {
     byCategory.putIfAbsent(e.category, () => []).add(e);
   }
@@ -123,8 +123,7 @@ Future<void> downloadExpensesPdf(List<Expense> expenses) async {
           children: [
             // Header row
             pw.TableRow(
-              decoration:
-                  const pw.BoxDecoration(color: PdfColors.red800),
+              decoration: const pw.BoxDecoration(color: PdfColors.red800),
               children: [
                 _hCell('Category', tableHeaderStyle),
                 _hCell('Amount', tableHeaderStyle),
@@ -160,17 +159,16 @@ Future<void> downloadExpensesPdf(List<Expense> expenses) async {
         pw.Table(
           border: pw.TableBorder.all(color: PdfColors.grey300),
           columnWidths: {
-            0: const pw.FlexColumnWidth(0.5),  // #
-            1: const pw.FlexColumnWidth(3),    // Purpose
-            2: const pw.FlexColumnWidth(2),    // Category
-            3: const pw.FlexColumnWidth(1.5),  // Date
-            4: const pw.FlexColumnWidth(1.5),  // Amount
+            0: const pw.FlexColumnWidth(0.5), // #
+            1: const pw.FlexColumnWidth(3), // Purpose
+            2: const pw.FlexColumnWidth(2), // Category
+            3: const pw.FlexColumnWidth(1.5), // Date
+            4: const pw.FlexColumnWidth(1.5), // Amount
           },
           children: [
             // Header
             pw.TableRow(
-              decoration:
-                  const pw.BoxDecoration(color: PdfColors.red800),
+              decoration: const pw.BoxDecoration(color: PdfColors.red800),
               children: [
                 _hCell('#', tableHeaderStyle),
                 _hCell('Purpose', tableHeaderStyle),
@@ -183,8 +181,7 @@ Future<void> downloadExpensesPdf(List<Expense> expenses) async {
             ...expenses.asMap().entries.map((entry) {
               final i = entry.key;
               final e = entry.value;
-              final shade =
-                  i.isEven ? PdfColors.white : PdfColors.grey50;
+              final shade = i.isEven ? PdfColors.white : PdfColors.grey50;
               return pw.TableRow(
                 decoration: pw.BoxDecoration(color: shade),
                 children: [
@@ -192,8 +189,7 @@ Future<void> downloadExpensesPdf(List<Expense> expenses) async {
                   _cell(e.purpose, baseStyle),
                   _cell(e.category, baseStyle),
                   _cell(Fmt.date(e.date), baseStyle),
-                  _cell(
-                      '$currency${Fmt.moneyRaw(e.amount)}', boldStyle),
+                  _cell('$currency${Fmt.moneyRaw(e.amount)}', boldStyle),
                 ],
               );
             }),
@@ -213,32 +209,25 @@ Future<void> downloadExpensesPdf(List<Expense> expenses) async {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 pw.Widget _hCell(String text, pw.TextStyle style) => pw.Padding(
-      padding:
-          const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
       child: pw.Text(text, style: style),
     );
 
 pw.Widget _cell(String text, pw.TextStyle style) => pw.Padding(
-      padding:
-          const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: pw.Text(text, style: style),
     );
 
-pw.Widget _summaryItem(
-    String label, String value, pw.Font boldFont) =>
+pw.Widget _summaryItem(String label, String value, pw.Font boldFont) =>
     pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.center,
       children: [
         pw.Text(label,
             style: pw.TextStyle(
-                font: boldFont,
-                fontSize: 8,
-                color: PdfColors.grey600)),
+                font: boldFont, fontSize: 8, color: PdfColors.grey600)),
         pw.SizedBox(height: 2),
         pw.Text(value,
             style: pw.TextStyle(
-                font: boldFont,
-                fontSize: 11,
-                color: PdfColors.red800)),
+                font: boldFont, fontSize: 11, color: PdfColors.red800)),
       ],
     );

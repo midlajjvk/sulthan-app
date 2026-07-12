@@ -1,7 +1,7 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import '../../database/app_database.dart';
+import '../../models/member_model.dart';
 import 'formatters.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -9,7 +9,7 @@ import 'formatters.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Download a single member's profile as PDF.
-Future<void> downloadSingleMemberPdf(Member m) async {
+Future<void> downloadSingleMemberPdf(MemberModel m) async {
   final regular = await PdfGoogleFonts.notoSansRegular();
   final bold = await PdfGoogleFonts.notoSansBold();
 
@@ -23,21 +23,19 @@ Future<void> downloadSingleMemberPdf(Member m) async {
         children: [
           _pageHeader(regular, bold),
           pw.SizedBox(height: 20),
-          // ── Member card ───────────────────────────────────────────────
           pw.Container(
             padding: const pw.EdgeInsets.all(20),
             decoration: pw.BoxDecoration(
               border: pw.Border.all(color: PdfColors.grey300),
-              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+              borderRadius:
+                  const pw.BorderRadius.all(pw.Radius.circular(8)),
             ),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Avatar + name row
                 pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    // Circle avatar placeholder
                     pw.Container(
                       width: 56,
                       height: 56,
@@ -57,7 +55,8 @@ Future<void> downloadSingleMemberPdf(Member m) async {
                     pw.SizedBox(width: 16),
                     pw.Expanded(
                       child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                            pw.CrossAxisAlignment.start,
                         children: [
                           pw.Text(m.name,
                               style: pw.TextStyle(
@@ -74,7 +73,6 @@ Future<void> downloadSingleMemberPdf(Member m) async {
                 pw.SizedBox(height: 16),
                 pw.Divider(color: PdfColors.grey200),
                 pw.SizedBox(height: 12),
-                // Detail rows
                 _detailGrid(m, regular, bold),
               ],
             ),
@@ -83,7 +81,9 @@ Future<void> downloadSingleMemberPdf(Member m) async {
           pw.Text(
             'Generated on ${Fmt.date(DateTime.now())}',
             style: pw.TextStyle(
-                font: regular, fontSize: 9, color: PdfColors.grey500),
+                font: regular,
+                fontSize: 9,
+                color: PdfColors.grey500),
           ),
         ],
       ),
@@ -97,7 +97,7 @@ Future<void> downloadSingleMemberPdf(Member m) async {
 }
 
 /// Download all members as a table PDF.
-Future<void> downloadAllMembersPdf(List<Member> members) async {
+Future<void> downloadAllMembersPdf(List<MemberModel> members) async {
   final regular = await PdfGoogleFonts.notoSansRegular();
   final bold = await PdfGoogleFonts.notoSansBold();
 
@@ -126,16 +126,22 @@ Future<void> downloadAllMembersPdf(List<Member> members) async {
         children: [
           pw.Text('SULTHAN - Members Directory',
               style: pw.TextStyle(
-                  font: regular, fontSize: 8, color: PdfColors.grey500)),
-          pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}',
+                  font: regular,
+                  fontSize: 8,
+                  color: PdfColors.grey500)),
+          pw.Text(
+              'Page ${ctx.pageNumber} of ${ctx.pagesCount}',
               style: pw.TextStyle(
-                  font: regular, fontSize: 8, color: PdfColors.grey500)),
+                  font: regular,
+                  fontSize: 8,
+                  color: PdfColors.grey500)),
         ],
       ),
       build: (ctx) => [
-        // ── Summary banner ─────────────────────────────────────────────
+        // Summary banner
         pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const pw.EdgeInsets.symmetric(
+              horizontal: 14, vertical: 10),
           decoration: pw.BoxDecoration(
             color: PdfColors.indigo50,
             borderRadius:
@@ -143,9 +149,11 @@ Future<void> downloadAllMembersPdf(List<Member> members) async {
             border: pw.Border.all(color: PdfColors.indigo200),
           ),
           child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+            mainAxisAlignment:
+                pw.MainAxisAlignment.spaceAround,
             children: [
-              _summaryItem('Total Members', '${members.length}', bold),
+              _summaryItem(
+                  'Total Members', '${members.length}', bold),
               _summaryItem(
                   'Active',
                   '${members.where((m) => m.status == 'Active').length}',
@@ -160,25 +168,23 @@ Future<void> downloadAllMembersPdf(List<Member> members) async {
           ),
         ),
         pw.SizedBox(height: 16),
-
-        // ── Members table ──────────────────────────────────────────────
+        // Members table
         pw.Table(
           border: pw.TableBorder.all(color: PdfColors.grey300),
           columnWidths: {
-            0: const pw.FlexColumnWidth(0.4),  // #
-            1: const pw.FlexColumnWidth(2.2),  // Name
-            2: const pw.FlexColumnWidth(1.6),  // Mobile
-            3: const pw.FlexColumnWidth(2.0),  // Email
-            4: const pw.FlexColumnWidth(0.8),  // Blood
-            5: const pw.FlexColumnWidth(1.2),  // DOB
-            6: const pw.FlexColumnWidth(2.2),  // Address
-            7: const pw.FlexColumnWidth(0.8),  // Status
+            0: const pw.FlexColumnWidth(0.4),
+            1: const pw.FlexColumnWidth(2.2),
+            2: const pw.FlexColumnWidth(1.6),
+            3: const pw.FlexColumnWidth(2.0),
+            4: const pw.FlexColumnWidth(0.8),
+            5: const pw.FlexColumnWidth(1.2),
+            6: const pw.FlexColumnWidth(2.2),
+            7: const pw.FlexColumnWidth(0.8),
           },
           children: [
-            // Header
             pw.TableRow(
-              decoration:
-                  const pw.BoxDecoration(color: PdfColors.indigo800),
+              decoration: const pw.BoxDecoration(
+                  color: PdfColors.indigo800),
               children: [
                 _hCell('#', tableHeaderStyle),
                 _hCell('Name', tableHeaderStyle),
@@ -190,7 +196,6 @@ Future<void> downloadAllMembersPdf(List<Member> members) async {
                 _hCell('Status', tableHeaderStyle),
               ],
             ),
-            // Data rows
             ...members.asMap().entries.map((entry) {
               final i = entry.key;
               final m = entry.value;
@@ -204,11 +209,14 @@ Future<void> downloadAllMembersPdf(List<Member> members) async {
                   _cell(m.mobile, cellStyle),
                   _cell(m.email ?? '-', cellStyle),
                   _cell(m.bloodGroup ?? '-', cellStyle),
-                  _cell(m.dateOfBirth != null
-                      ? Fmt.date(m.dateOfBirth!)
-                      : '-', cellStyle),
+                  _cell(
+                      m.dateOfBirth != null
+                          ? Fmt.date(m.dateOfBirth!)
+                          : '-',
+                      cellStyle),
                   _cell(m.address ?? '-', cellStyle),
-                  _cell(m.status,
+                  _cell(
+                      m.status,
                       m.status == 'Active'
                           ? pw.TextStyle(
                               font: bold,
@@ -249,7 +257,8 @@ pw.Widget _pageHeader(pw.Font regular, pw.Font bold) => pw.Row(
                     font: bold,
                     fontSize: 20,
                     color: PdfColors.indigo800)),
-            pw.Text('Community Treasury & Member Management',
+            pw.Text(
+                'Community Treasury & Member Management',
                 style: pw.TextStyle(
                     font: regular,
                     fontSize: 10,
@@ -258,16 +267,19 @@ pw.Widget _pageHeader(pw.Font regular, pw.Font bold) => pw.Row(
         ),
         pw.Text('MEMBERS DIRECTORY',
             style: pw.TextStyle(
-                font: bold, fontSize: 12, color: PdfColors.grey700)),
+                font: bold,
+                fontSize: 12,
+                color: PdfColors.grey700)),
       ],
     );
 
-/// Two-column detail grid for single member view.
-pw.Widget _detailGrid(Member m, pw.Font regular, pw.Font bold) {
+pw.Widget _detailGrid(
+    MemberModel m, pw.Font regular, pw.Font bold) {
   final items = <_DetailItem>[
     _DetailItem('Mobile', m.mobile),
     _DetailItem('Email', m.email ?? '-'),
-    _DetailItem('Date of Birth',
+    _DetailItem(
+        'Date of Birth',
         m.dateOfBirth != null
             ? '${Fmt.date(m.dateOfBirth!)}  (Age ${Fmt.age(m.dateOfBirth!)})'
             : '-'),
@@ -275,7 +287,9 @@ pw.Widget _detailGrid(Member m, pw.Font regular, pw.Font bold) {
     _DetailItem('Address', m.address ?? '-'),
     if (m.additionalInfo != null)
       _DetailItem('Additional Info', m.additionalInfo!),
-    _DetailItem('Member Since', Fmt.date(m.createdAt)),
+    _DetailItem(
+        'Member Since',
+        m.createdAt != null ? Fmt.date(m.createdAt!) : '-'),
   ];
 
   return pw.Column(
@@ -283,7 +297,8 @@ pw.Widget _detailGrid(Member m, pw.Font regular, pw.Font bold) {
       return pw.Padding(
         padding: const pw.EdgeInsets.only(bottom: 8),
         child: pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          crossAxisAlignment:
+              pw.CrossAxisAlignment.start,
           children: [
             pw.SizedBox(
               width: 110,
@@ -295,7 +310,9 @@ pw.Widget _detailGrid(Member m, pw.Font regular, pw.Font bold) {
             ),
             pw.Text(':  ',
                 style: pw.TextStyle(
-                    font: regular, fontSize: 10, color: PdfColors.grey600)),
+                    font: regular,
+                    fontSize: 10,
+                    color: PdfColors.grey600)),
             pw.Expanded(
               child: pw.Text(item.value,
                   style: pw.TextStyle(
@@ -320,41 +337,51 @@ pw.Widget _statusBadge(String status, pw.Font bold) {
       borderRadius:
           const pw.BorderRadius.all(pw.Radius.circular(4)),
       border: pw.Border.all(
-          color: isActive ? PdfColors.green300 : PdfColors.grey400),
+          color:
+              isActive ? PdfColors.green300 : PdfColors.grey400),
     ),
     child: pw.Text(
       status,
       style: pw.TextStyle(
           font: bold,
           fontSize: 9,
-          color: isActive ? PdfColors.green800 : PdfColors.grey700),
+          color: isActive
+              ? PdfColors.green800
+              : PdfColors.grey700),
     ),
   );
 }
 
-pw.Widget _summaryItem(String label, String value, pw.Font bold) =>
+pw.Widget _summaryItem(
+        String label, String value, pw.Font bold) =>
     pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.center,
       children: [
         pw.Text(label,
             style: pw.TextStyle(
-                font: bold, fontSize: 8, color: PdfColors.grey600)),
+                font: bold,
+                fontSize: 8,
+                color: PdfColors.grey600)),
         pw.SizedBox(height: 2),
         pw.Text(value,
             style: pw.TextStyle(
-                font: bold, fontSize: 11, color: PdfColors.indigo800)),
+                font: bold,
+                fontSize: 11,
+                color: PdfColors.indigo800)),
       ],
     );
 
-pw.Widget _hCell(String text, pw.TextStyle style) => pw.Padding(
-      padding:
-          const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+pw.Widget _hCell(String text, pw.TextStyle style) =>
+    pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 5, vertical: 5),
       child: pw.Text(text, style: style),
     );
 
-pw.Widget _cell(String text, pw.TextStyle style) => pw.Padding(
-      padding:
-          const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+pw.Widget _cell(String text, pw.TextStyle style) =>
+    pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 5, vertical: 4),
       child: pw.Text(text, style: style),
     );
 

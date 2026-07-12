@@ -41,48 +41,44 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDc2MsmjAdcpfrmhE-u3JpbF-eeeDaig20',
-    appId: '1:400182855595:web:55bfd778d592f4db47f4ee',
-    messagingSenderId: '400182855595',
-    projectId: 'sult-b9b82',
-    authDomain: 'sult-b9b82.firebaseapp.com',
-    storageBucket: 'sult-b9b82.firebasestorage.app',
-    measurementId: 'G-T83N309D14',
+    apiKey: 'AIzaSyAI80YjTB-eqz9OYjt2nl41_L4v3IV-UlE',
+    appId: '1:161614075971:web:7b34f117f66a57dfae9cf6',
+    messagingSenderId: '161614075971',
+    projectId: 'sulthan-95049',
+    authDomain: 'sulthan-95049.firebaseapp.com',
+    storageBucket: 'sulthan-95049.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAyuSlYnSPiOKeWPQm6Rmk3zWTxvcBl5KY',
-    appId: '1:400182855595:android:351258463276440247f4ee',
-    messagingSenderId: '400182855595',
-    projectId: 'sult-b9b82',
-    storageBucket: 'sult-b9b82.firebasestorage.app',
+    apiKey: 'AIzaSyDt-baVpovRvReLBXokXdNNCHXCbduYgrw',
+    appId: '1:161614075971:android:2e012c7a2f953a96ae9cf6',
+    messagingSenderId: '161614075971',
+    projectId: 'sulthan-95049',
+    storageBucket: 'sulthan-95049.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCxXAtj0_zQPmDMWsan5GtcMEZNvUm3YRY',
-    appId: '1:400182855595:ios:3e265c05c445996647f4ee',
-    messagingSenderId: '400182855595',
-    projectId: 'sult-b9b82',
-    storageBucket: 'sult-b9b82.firebasestorage.app',
+    apiKey: 'AIzaSyD1H9-tcBVEH-sdatmv0KFF-pLpherOqko',
+    appId: '1:161614075971:ios:5d893eaca39643eeae9cf6',
+    messagingSenderId: '161614075971',
+    projectId: 'sulthan-95049',
+    storageBucket: 'sulthan-95049.firebasestorage.app',
     iosBundleId: 'com.sulthan.sulthan',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyCxXAtj0_zQPmDMWsan5GtcMEZNvUm3YRY',
-    appId: '1:400182855595:ios:3e265c05c445996647f4ee',
-    messagingSenderId: '400182855595',
-    projectId: 'sult-b9b82',
-    storageBucket: 'sult-b9b82.firebasestorage.app',
+    apiKey: 'AIzaSyD1H9-tcBVEH-sdatmv0KFF-pLpherOqko',
+    appId: '1:161614075971:ios:5d893eaca39643eeae9cf6',
+    messagingSenderId: '161614075971',
+    projectId: 'sulthan-95049',
+    storageBucket: 'sulthan-95049.firebasestorage.app',
     iosBundleId: 'com.sulthan.sulthan',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDc2MsmjAdcpfrmhE-u3JpbF-eeeDaig20',
-    appId: '1:400182855595:web:3889cd06919fad4c47f4ee',
-    messagingSenderId: '400182855595',
-    projectId: 'sult-b9b82',
-    authDomain: 'sult-b9b82.firebaseapp.com',
-    storageBucket: 'sult-b9b82.firebasestorage.app',
-    measurementId: 'G-7KRHBN9WC1',
+    apiKey: 'AIzaSyAI80YjTB-eqz9OYjt2nl41_L4v3IV-UlE',
+    appId: '1:161614075971:web:e0e6a49b5782450eae9cf6',
+    messagingSenderId: '161614075971',
+    projectId: 'sulthan-95049',
+    authDomain: 'sulthan-95049.firebaseapp.com',
+    storageBucket: 'sulthan-95049.firebasestorage.app',
   );
 }

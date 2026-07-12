@@ -1,34 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../database/app_database.dart';
 import '../../core/constants/app_constants.dart';
 import '../../repositories/firebase/collection_repository.dart';
 import '../../repositories/firebase/expense_repository.dart';
 import '../../repositories/firebase/member_repository.dart';
 import '../../repositories/firebase/payment_repository.dart';
 
+// ── SharedPreferences ─────────────────────────────────────────────────────────
+
 final sharedPrefsProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('Override in main');
+  throw UnimplementedError('Override sharedPrefsProvider in main()');
 });
 
-final dbProvider = Provider<AppDatabase>((ref) {
-  final db = AppDatabase();
-  ref.onDispose(db.close);
-  return db;
-});
+// ── Repository providers ──────────────────────────────────────────────────────
 
-final memberRepositoryProvider = Provider<MemberRepository>(
-    (_) => MemberRepository());
+final memberRepositoryProvider =
+    Provider<MemberRepository>((_) => MemberRepository());
 
-final collectionRepositoryProvider = Provider<CollectionRepository>(
-    (_) => CollectionRepository());
+final collectionRepositoryProvider =
+    Provider<CollectionRepository>((_) => CollectionRepository());
 
-final paymentRepositoryProvider = Provider<PaymentRepository>(
-    (_) => PaymentRepository());
+final paymentRepositoryProvider =
+    Provider<PaymentRepository>((_) => PaymentRepository());
 
-final expenseRepositoryProvider = Provider<ExpenseRepository>(
-    (_) => ExpenseRepository());
+final expenseRepositoryProvider =
+    Provider<ExpenseRepository>((_) => ExpenseRepository());
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
 
 final themeModeProvider =
     StateNotifierProvider<ThemeNotifier, ThemeMode>((ref) {

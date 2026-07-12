@@ -1,7 +1,6 @@
 class AppConstants {
   static const String appName = 'SULTHAN';
   static const String currency = '₹';
-  static const String dbName = 'sulthan.db';
   static const double monthlyAmount = 100.0;
   static const double finePerDay = 10.0;
   static const int fineDueDay = 5; // fine applies after this day of month

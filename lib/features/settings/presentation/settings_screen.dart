@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../core/constants/app_constants.dart';
 
@@ -70,22 +69,7 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          // ── TEMPORARY: remove after migration ──────────────────────────
-          const SizedBox(height: 8),
-          const _SectionTitle('Migration (Temporary)'),
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: ListTile(
-              leading: Icon(Icons.cloud_upload_outlined,
-                  color: Theme.of(context).colorScheme.error),
-              title: const Text('Migrate to Firestore'),
-              subtitle: const Text('One-time data migration tool'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/settings/migrate'),
-            ),
-          ),
           const SizedBox(height: 16),
-          // ── END TEMPORARY ───────────────────────────────────────────────
         ],
       ),
     );

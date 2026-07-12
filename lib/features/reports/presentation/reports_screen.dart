@@ -6,17 +6,31 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/report_pdf.dart';
 import '../../../core/constants/app_constants.dart';
 
-final _reportsProvider = FutureProvider.autoDispose<ReportData>((ref) async {
-  final db = ref.read(dbProvider);
-  final income = await db.getTotalIncome();
-  final expenses = await db.getTotalExpenses();
-  final monthly = await db.getMonthlyCollectionTotal();
-  final event = await db.getEventCollectionTotal();
-  final members = await db.getMemberCount();
-  final pending = await db.getPendingMonthlyCount();
-  final allExpenses = await db.getExpenses();
-  final allPayments = await db.getAllPayments();
-  final collections = await db.getCollections();
+final _reportsProvider =
+    FutureProvider.autoDispose<ReportData>((ref) async {
+  final memberRepo = ref.watch(memberRepositoryProvider);
+  final collectionRepo = ref.watch(collectionRepositoryProvider);
+  final paymentRepo = ref.watch(paymentRepositoryProvider);
+  final expenseRepo = ref.watch(expenseRepositoryProvider);
+
+  final allCollections = await collectionRepo.getCollections();
+  final monthlyIds = allCollections
+      .where((c) => c.type == AppConstants.typeMonthly)
+      .map((c) => c.id)
+      .toList();
+  final eventIds = allCollections
+      .where((c) => c.type == AppConstants.typeEvent)
+      .map((c) => c.id)
+      .toList();
+
+  final income = await paymentRepo.getTotalIncome();
+  final expenses = await expenseRepo.getTotalExpenses();
+  final monthly = await paymentRepo.getMonthlyCollectionTotal(monthlyIds);
+  final event = await paymentRepo.getEventCollectionTotal(eventIds);
+  final members = await memberRepo.getMemberCount();
+  final pending = await paymentRepo.getPendingMonthlyCount(monthlyIds);
+  final allExpenses = await expenseRepo.getExpenses();
+  final allPayments = await paymentRepo.getAllPayments();
 
   final catMap = <String, double>{};
   for (final e in allExpenses) {
@@ -32,10 +46,16 @@ final _reportsProvider = FutureProvider.autoDispose<ReportData>((ref) async {
     memberCount: members,
     pendingCount: pending,
     expenseByCategory: catMap,
-    totalCollections: collections.length,
-    paidPayments: allPayments.where((p) => p.status == AppConstants.statusPaid).length,
-    partialPayments: allPayments.where((p) => p.status == AppConstants.statusPartial).length,
-    pendingPayments: allPayments.where((p) => p.status == AppConstants.statusPending).length,
+    totalCollections: allCollections.length,
+    paidPayments: allPayments
+        .where((p) => p.status == AppConstants.statusPaid)
+        .length,
+    partialPayments: allPayments
+        .where((p) => p.status == AppConstants.statusPartial)
+        .length,
+    pendingPayments: allPayments
+        .where((p) => p.status == AppConstants.statusPending)
+        .length,
   );
 });
 
@@ -44,6 +64,7 @@ class ReportData {
   final int memberCount, pendingCount, totalCollections;
   final int paidPayments, partialPayments, pendingPayments;
   final Map<String, double> expenseByCategory;
+
   const ReportData({
     required this.totalIncome,
     required this.totalExpenses,
@@ -72,7 +93,6 @@ class ReportsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Reports'),
         actions: [
-          // ── Download PDF ───────────────────────────────────────────────
           async.when(
             data: (d) => _DownloadButton(reportData: d),
             loading: () => const SizedBox.shrink(),
@@ -103,18 +123,27 @@ class ReportsScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Net Balance',
-                      style: TextStyle(color: cs.onPrimary.withValues(alpha: 0.8), fontSize: 13)),
+                      style: TextStyle(
+                          color: cs.onPrimary.withValues(alpha: 0.8),
+                          fontSize: 13)),
                   const SizedBox(height: 4),
                   Text(Fmt.money(d.balance),
                       style: TextStyle(
-                          color: cs.onPrimary, fontSize: 30, fontWeight: FontWeight.bold)),
+                          color: cs.onPrimary,
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   Row(children: [
                     Expanded(
                       child: _BalanceStat(
-                          label: 'Income', value: Fmt.money(d.totalIncome), color: cs.onPrimary),
+                          label: 'Income',
+                          value: Fmt.money(d.totalIncome),
+                          color: cs.onPrimary),
                     ),
-                    Container(width: 1, height: 32, color: cs.onPrimary.withValues(alpha: 0.3)),
+                    Container(
+                        width: 1,
+                        height: 32,
+                        color: cs.onPrimary.withValues(alpha: 0.3)),
                     Expanded(
                       child: _BalanceStat(
                           label: 'Expenses',
@@ -130,9 +159,12 @@ class ReportsScreen extends ConsumerWidget {
             // Collection breakdown
             const SectionHeader('Collections'),
             _ReportCard(children: [
-              _Row('Monthly Collections', Fmt.money(d.monthlyTotal), cs.primary),
-              _Row('Event Collections', Fmt.money(d.eventTotal), Colors.purple),
-              _Row('Total Collections', '${d.totalCollections}', cs.onSurface),
+              _Row('Monthly Collections', Fmt.money(d.monthlyTotal),
+                  cs.primary),
+              _Row('Event Collections', Fmt.money(d.eventTotal),
+                  Colors.purple),
+              _Row('Total Collections', '${d.totalCollections}',
+                  cs.onSurface),
             ]),
             const SizedBox(height: 12),
 
@@ -192,14 +224,21 @@ extension _ListSort<T> on List<T> {
 class _BalanceStat extends StatelessWidget {
   final String label, value;
   final Color color;
-  const _BalanceStat({required this.label, required this.value, required this.color});
+  const _BalanceStat(
+      {required this.label, required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) => Column(
         children: [
-          Text(label, style: TextStyle(color: color.withValues(alpha: 0.7), fontSize: 11)),
+          Text(label,
+              style:
+                  TextStyle(color: color.withValues(alpha: 0.7), fontSize: 11)),
           const SizedBox(height: 2),
-          Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14)),
+          Text(value,
+              style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14)),
         ],
       );
 }
@@ -228,9 +267,12 @@ class _Row extends StatelessWidget {
         child: Row(children: [
           Expanded(
             child: Text(label,
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ),
-          Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+          Text(value,
+              style:
+                  TextStyle(fontWeight: FontWeight.bold, color: color)),
         ]),
       );
 }
@@ -240,7 +282,10 @@ class _CategoryBar extends StatelessWidget {
   final double amount, total;
   final ColorScheme cs;
   const _CategoryBar(
-      {required this.label, required this.amount, required this.total, required this.cs});
+      {required this.label,
+      required this.amount,
+      required this.total,
+      required this.cs});
 
   @override
   Widget build(BuildContext context) {
@@ -251,9 +296,14 @@ class _CategoryBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+            Expanded(
+                child:
+                    Text(label, style: const TextStyle(fontSize: 13))),
             Text(Fmt.money(amount),
-                style: TextStyle(fontWeight: FontWeight.bold, color: cs.error, fontSize: 13)),
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: cs.error,
+                    fontSize: 13)),
           ]),
           const SizedBox(height: 4),
           LinearProgressIndicator(
@@ -267,8 +317,6 @@ class _CategoryBar extends StatelessWidget {
     );
   }
 }
-
-// ── PDF download button ───────────────────────────────────────────────────────
 
 class _DownloadButton extends StatefulWidget {
   final ReportData reportData;

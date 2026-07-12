@@ -1,7 +1,10 @@
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import '../../database/app_database.dart';
+import '../../models/collection_model.dart';
+import '../../models/member_model.dart';
+import '../../models/payment_model.dart';
+import '../../repositories/firebase/payment_repository.dart';
 import 'formatters.dart';
 import '../constants/app_constants.dart';
 
@@ -10,18 +13,17 @@ import '../constants/app_constants.dart';
 /// Downloads a PDF showing Paid / Partial / Pending members for a collection.
 /// Pass [filterStatus] to export only one status, or null for all.
 Future<void> downloadCollectionPaymentsPdf({
-  required Collection collection,
-  required List<Payment> payments,
-  required Map<int, Member> memberMap,
-  String? filterStatus, // null = all three groups
+  required CollectionModel collection,
+  required List<PaymentModel> payments,
+  required Map<String, MemberModel> memberMap,
+  String? filterStatus,
 }) async {
   final regular = await PdfGoogleFonts.notoSansRegular();
   final bold = await PdfGoogleFonts.notoSansBold();
 
   final pdf = pw.Document();
 
-  // ── Filter payments ────────────────────────────────────────────────────
-  List<Payment> forStatus(String status) => payments
+  List<PaymentModel> forStatus(String status) => payments
       .where((p) => p.status == status)
       .toList()
     ..sort((a, b) {
@@ -30,28 +32,28 @@ Future<void> downloadCollectionPaymentsPdf({
       return na.compareTo(nb);
     });
 
-  final paid = filterStatus == null || filterStatus == AppConstants.statusPaid
-      ? forStatus(AppConstants.statusPaid)
-      : <Payment>[];
+  final paid =
+      filterStatus == null || filterStatus == AppConstants.statusPaid
+          ? forStatus(AppConstants.statusPaid)
+          : <PaymentModel>[];
   final partial =
       filterStatus == null || filterStatus == AppConstants.statusPartial
           ? forStatus(AppConstants.statusPartial)
-          : <Payment>[];
+          : <PaymentModel>[];
   final pending =
       filterStatus == null || filterStatus == AppConstants.statusPending
           ? forStatus(AppConstants.statusPending)
-          : <Payment>[];
+          : <PaymentModel>[];
 
   final totalCollected = [...paid, ...partial]
       .fold(0.0, (s, p) => s + p.paidAmount + (p.fineAmount ?? 0));
   final totalFinesCollected = [...paid, ...partial]
       .fold(0.0, (s, p) => s + (p.fineAmount ?? 0));
-  
-  // Calculate target based on what's actually in the filtered view
-  final membersInView = paid.length + partial.length + pending.length;
+
+  final membersInView =
+      paid.length + partial.length + pending.length;
   final target = collection.amountPerMember * membersInView;
 
-  // ── Styles ─────────────────────────────────────────────────────────────
   final titleStyle =
       pw.TextStyle(font: bold, fontSize: 20, color: PdfColors.indigo800);
   final subStyle = pw.TextStyle(
@@ -65,9 +67,9 @@ Future<void> downloadCollectionPaymentsPdf({
   final footerStyle = pw.TextStyle(
       font: regular, fontSize: 8, color: PdfColors.grey500);
 
-  // Labels adapt to what's being shown
   final isOnlyPending = filterStatus == AppConstants.statusPending;
-  final collectedLabel = isOnlyPending ? 'Outstanding' : 'Collected';
+  final collectedLabel =
+      isOnlyPending ? 'Outstanding' : 'Collected';
   final collectedValue = isOnlyPending
       ? '${AppConstants.currency}${Fmt.moneyRaw(target)} (${pending.length} members)'
       : totalFinesCollected > 0
@@ -75,9 +77,9 @@ Future<void> downloadCollectionPaymentsPdf({
           : '${AppConstants.currency}${Fmt.moneyRaw(totalCollected)} / ${AppConstants.currency}${Fmt.moneyRaw(target)}';
 
   final collectionLabel = collection.type == AppConstants.typeMonthly &&
-      collection.month != null
+          collection.month != null
       ? Fmt.monthYearOf(collection.month!, collection.year!)
-      : Fmt.date(collection.dateCreated);
+      : Fmt.date(collection.dateCreated ?? DateTime.now());
 
   final title = filterStatus == null
       ? 'Payment Status Report'
@@ -87,7 +89,6 @@ Future<void> downloadCollectionPaymentsPdf({
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(32),
-      // ── Page header ────────────────────────────────────────────────────
       header: (ctx) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -98,7 +99,8 @@ Future<void> downloadCollectionPaymentsPdf({
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text('SULTHAN', style: titleStyle),
-                  pw.Text('Community Treasury & Member Management',
+                  pw.Text(
+                      'Community Treasury & Member Management',
                       style: subStyle),
                 ],
               ),
@@ -111,117 +113,126 @@ Future<void> downloadCollectionPaymentsPdf({
                           fontSize: 12,
                           color: PdfColors.grey700)),
                   pw.Text(collectionLabel, style: subStyle),
-                  pw.Text('Generated: ${Fmt.date(DateTime.now())}',
+                  pw.Text(
+                      'Generated: ${Fmt.date(DateTime.now())}',
                       style: subStyle),
                 ],
               ),
             ],
           ),
           pw.SizedBox(height: 6),
-          pw.Divider(color: PdfColors.indigo800, thickness: 1.5),
+          pw.Divider(
+              color: PdfColors.indigo800, thickness: 1.5),
           pw.SizedBox(height: 6),
         ],
       ),
-      // ── Page footer ────────────────────────────────────────────────────
       footer: (ctx) => pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text('${collection.title} - $collectionLabel',
+          pw.Text(
+              '${collection.title} - $collectionLabel',
               style: footerStyle),
-          pw.Text('Page ${ctx.pageNumber} of ${ctx.pagesCount}',
+          pw.Text(
+              'Page ${ctx.pageNumber} of ${ctx.pagesCount}',
               style: footerStyle),
         ],
       ),
       build: (ctx) => [
-        // ── Summary banner ─────────────────────────────────────────────
         pw.Container(
           padding: const pw.EdgeInsets.all(12),
           decoration: pw.BoxDecoration(
             color: PdfColors.indigo50,
-            borderRadius:
-                const pw.BorderRadius.all(pw.Radius.circular(8)),
+            borderRadius: const pw.BorderRadius.all(
+                pw.Radius.circular(8)),
             border: pw.Border.all(color: PdfColors.indigo200),
           ),
           child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+            mainAxisAlignment:
+                pw.MainAxisAlignment.spaceAround,
             children: [
-              _stat('Collection', collection.title, bold, regular,
-                  maxWidth: 120),
+              _stat('Collection', collection.title, bold,
+                  regular, maxWidth: 120),
               _stat('Period', collectionLabel, bold, regular),
-              _stat('Per Member',
+              _stat(
+                  'Per Member',
                   '${AppConstants.currency}${Fmt.moneyRaw(collection.amountPerMember)}',
-                  bold, regular),
-              _stat(collectedLabel, collectedValue, bold, regular),
+                  bold,
+                  regular),
+              _stat(collectedLabel, collectedValue, bold,
+                  regular),
             ],
           ),
         ),
         pw.SizedBox(height: 10),
-
-        // ── Count chips row ────────────────────────────────────────────
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.start,
           children: [
-            if (filterStatus == null || filterStatus == AppConstants.statusPaid)
+            if (filterStatus == null ||
+                filterStatus == AppConstants.statusPaid)
               _countChip('Paid', paid.length, PdfColors.green700,
                   PdfColors.green50, bold, regular),
             pw.SizedBox(width: 8),
             if (filterStatus == null ||
                 filterStatus == AppConstants.statusPartial)
-              _countChip('Partial', partial.length, PdfColors.orange700,
-                  PdfColors.orange50, bold, regular),
+              _countChip('Partial', partial.length,
+                  PdfColors.orange700, PdfColors.orange50, bold,
+                  regular),
             pw.SizedBox(width: 8),
             if (filterStatus == null ||
                 filterStatus == AppConstants.statusPending)
-              _countChip('Pending', pending.length, PdfColors.red700,
-                  PdfColors.red50, bold, regular),
+              _countChip('Pending', pending.length,
+                  PdfColors.red700, PdfColors.red50, bold,
+                  regular),
             if (totalFinesCollected > 0) ...[
               pw.SizedBox(width: 8),
               _fineChip(
                 '${AppConstants.currency}${Fmt.moneyRaw(totalFinesCollected)} Fines',
-                bold, regular,
+                bold,
+                regular,
               ),
             ],
           ],
         ),
         pw.SizedBox(height: 16),
-
-        // ── Paid section ───────────────────────────────────────────────
         if (paid.isNotEmpty) ...[
           _sectionHeader('Paid Members (${paid.length})',
               PdfColors.green700, sectionStyle),
           pw.SizedBox(height: 6),
-          _memberTable(paid, memberMap, tableHeaderStyle, cell, boldCell,
-              PdfColors.green800, showAmount: true, showAdvance: true),
+          _memberTable(paid, memberMap, tableHeaderStyle, cell,
+              boldCell, PdfColors.green800,
+              showAmount: true, showAdvance: true),
           pw.SizedBox(height: 16),
         ],
-
-        // ── Partial section ────────────────────────────────────────────
         if (partial.isNotEmpty) ...[
-          _sectionHeader('Partial Payments (${partial.length})',
-              PdfColors.orange700, sectionStyle),
+          _sectionHeader(
+              'Partial Payments (${partial.length})',
+              PdfColors.orange700,
+              sectionStyle),
           pw.SizedBox(height: 6),
-          _memberTable(partial, memberMap, tableHeaderStyle, cell, boldCell,
-              PdfColors.orange800, showAmount: true, showAdvance: false),
+          _memberTable(partial, memberMap, tableHeaderStyle,
+              cell, boldCell, PdfColors.orange800,
+              showAmount: true, showAdvance: false),
           pw.SizedBox(height: 16),
         ],
-
-        // ── Pending section ────────────────────────────────────────────
         if (pending.isNotEmpty) ...[
-          _sectionHeader('Pending Members (${pending.length})',
-              PdfColors.red700, sectionStyle),
+          _sectionHeader(
+              'Pending Members (${pending.length})',
+              PdfColors.red700,
+              sectionStyle),
           pw.SizedBox(height: 6),
-          _memberTable(pending, memberMap, tableHeaderStyle, cell, boldCell,
-              PdfColors.red800, showAmount: false, showAdvance: false),
+          _memberTable(pending, memberMap, tableHeaderStyle,
+              cell, boldCell, PdfColors.red800,
+              showAmount: false, showAdvance: false),
         ],
       ],
     ),
   );
 
-  // Build filename
   final statusPart = filterStatus?.toLowerCase() ?? 'all';
   final monthPart = collection.month != null
       ? '${collection.year}_${collection.month!.toString().padLeft(2, '0')}'
-      : Fmt.date(collection.dateCreated).replaceAll(' ', '_');
+      : Fmt.date(collection.dateCreated ?? DateTime.now())
+          .replaceAll(' ', '_');
 
   await Printing.sharePdf(
     bytes: await pdf.save(),
@@ -235,8 +246,8 @@ Future<void> downloadCollectionPaymentsPdf({
 pw.Widget _sectionHeader(
         String text, PdfColor color, pw.TextStyle base) =>
     pw.Container(
-      padding:
-          const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 10, vertical: 5),
       decoration: pw.BoxDecoration(
         color: color,
         borderRadius:
@@ -251,8 +262,8 @@ pw.Widget _sectionHeader(
     );
 
 pw.Widget _memberTable(
-  List<Payment> list,
-  Map<int, Member> memberMap,
+  List<PaymentModel> list,
+  Map<String, MemberModel> memberMap,
   pw.TextStyle headerStyle,
   pw.TextStyle cell,
   pw.TextStyle boldCell,
@@ -260,21 +271,22 @@ pw.Widget _memberTable(
   required bool showAmount,
   required bool showAdvance,
 }) {
-  // Check if any in this list has a fine
-  final hasFines = showAmount && list.any((p) => (p.fineAmount ?? 0) > 0);
+  final hasFines =
+      showAmount && list.any((p) => (p.fineAmount ?? 0) > 0);
 
-  // Build column widths dynamically
   final Map<int, pw.TableColumnWidth> colWidths = showAmount
       ? {
-          0: const pw.FlexColumnWidth(0.4),   // #
-          1: const pw.FlexColumnWidth(2.2),   // Name
-          2: const pw.FlexColumnWidth(1.6),   // Mobile
-          3: const pw.FlexColumnWidth(1.3),   // Paid
-          if (hasFines) 4: const pw.FlexColumnWidth(1.0),  // Fine
-          if (hasFines) 5: const pw.FlexColumnWidth(1.3),  // Total
-          if (!hasFines) 4: const pw.FlexColumnWidth(1.4), // Date
-          if (showAdvance && hasFines) 6: const pw.FlexColumnWidth(1.8),
-          if (showAdvance && !hasFines) 5: const pw.FlexColumnWidth(1.8),
+          0: const pw.FlexColumnWidth(0.4),
+          1: const pw.FlexColumnWidth(2.2),
+          2: const pw.FlexColumnWidth(1.6),
+          3: const pw.FlexColumnWidth(1.3),
+          if (hasFines) 4: const pw.FlexColumnWidth(1.0),
+          if (hasFines) 5: const pw.FlexColumnWidth(1.3),
+          if (!hasFines) 4: const pw.FlexColumnWidth(1.4),
+          if (showAdvance && hasFines)
+            6: const pw.FlexColumnWidth(1.8),
+          if (showAdvance && !hasFines)
+            5: const pw.FlexColumnWidth(1.8),
         }
       : {
           0: const pw.FlexColumnWidth(0.4),
@@ -292,34 +304,39 @@ pw.Widget _memberTable(
         ]
       : ['#', 'Name', 'Mobile'];
 
-  final paidTotal = list.fold(0.0, (s, p) => s + p.paidAmount);
-  final fineTotal = list.fold(0.0, (s, p) => s + (p.fineAmount ?? 0));
+  final paidTotal =
+      list.fold(0.0, (s, p) => s + p.paidAmount);
+  final fineTotal =
+      list.fold(0.0, (s, p) => s + (p.fineAmount ?? 0));
   final grandTotal = paidTotal + fineTotal;
 
   final fineStyle = pw.TextStyle(
-      font: boldCell.font, fontSize: 9, color: PdfColors.orange800);
+      font: boldCell.font,
+      fontSize: 9,
+      color: PdfColors.orange800);
   final totalStyle = pw.TextStyle(
-      font: boldCell.font, fontSize: 9, color: PdfColors.indigo800);
+      font: boldCell.font,
+      fontSize: 9,
+      color: PdfColors.indigo800);
 
   return pw.Table(
     border: pw.TableBorder.all(color: PdfColors.grey300),
     columnWidths: colWidths,
     children: [
-      // ── Header row ──────────────────────────────────────────────────
       pw.TableRow(
         decoration: pw.BoxDecoration(color: accentColor),
         children: headers.map((h) => _tc(h, headerStyle)).toList(),
       ),
-      // ── Data rows ───────────────────────────────────────────────────
       ...list.asMap().entries.map((entry) {
         final i = entry.key;
         final p = entry.value;
         final member = memberMap[p.memberId];
-        final shade = i.isEven ? PdfColors.white : PdfColors.grey50;
+        final shade =
+            i.isEven ? PdfColors.white : PdfColors.grey50;
         final fine = p.fineAmount ?? 0;
         final rowTotal = p.paidAmount + fine;
         final advanceLabel = p.advanceEndMonth != null
-            ? '${AppDatabase.monthName(p.advanceEndMonth!)} ${p.advanceEndYear}'
+            ? '${CollectionUtils.monthName(p.advanceEndMonth!)} ${p.advanceEndYear}'
             : '-';
 
         if (!showAmount) {
@@ -339,38 +356,49 @@ pw.Widget _memberTable(
             _tc('${i + 1}', cell),
             _tc(member?.name ?? '-', boldCell),
             _tc(member?.mobile ?? '-', cell),
-            _tc('${AppConstants.currency}${Fmt.moneyRaw(p.paidAmount)}',
+            _tc(
+                '${AppConstants.currency}${Fmt.moneyRaw(p.paidAmount)}',
                 boldCell),
             if (hasFines)
-              _tc(fine > 0
-                  ? '${AppConstants.currency}${Fmt.moneyRaw(fine)}'
-                  : '-', fineStyle),
+              _tc(
+                  fine > 0
+                      ? '${AppConstants.currency}${Fmt.moneyRaw(fine)}'
+                      : '-',
+                  fineStyle),
             if (hasFines)
-              _tc('${AppConstants.currency}${Fmt.moneyRaw(rowTotal)}',
+              _tc(
+                  '${AppConstants.currency}${Fmt.moneyRaw(rowTotal)}',
                   totalStyle),
             if (!hasFines)
-              _tc(p.paymentDate != null ? Fmt.date(p.paymentDate!) : '-',
+              _tc(
+                  p.paymentDate != null
+                      ? Fmt.date(p.paymentDate!)
+                      : '-',
                   cell),
             if (showAdvance) _tc(advanceLabel, cell),
           ],
         );
       }),
-      // ── Totals row ───────────────────────────────────────────────────
       if (showAmount)
         pw.TableRow(
-          decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+          decoration:
+              const pw.BoxDecoration(color: PdfColors.grey100),
           children: [
             _tc('', cell),
             _tc('TOTAL', boldCell),
             _tc('${list.length} members', cell),
-            _tc('${AppConstants.currency}${Fmt.moneyRaw(paidTotal)}',
+            _tc(
+                '${AppConstants.currency}${Fmt.moneyRaw(paidTotal)}',
                 boldCell),
             if (hasFines)
-              _tc(fineTotal > 0
-                  ? '${AppConstants.currency}${Fmt.moneyRaw(fineTotal)}'
-                  : '-', fineStyle),
+              _tc(
+                  fineTotal > 0
+                      ? '${AppConstants.currency}${Fmt.moneyRaw(fineTotal)}'
+                      : '-',
+                  fineStyle),
             if (hasFines)
-              _tc('${AppConstants.currency}${Fmt.moneyRaw(grandTotal)}',
+              _tc(
+                  '${AppConstants.currency}${Fmt.moneyRaw(grandTotal)}',
                   totalStyle),
             if (!hasFines) _tc('', cell),
             if (showAdvance) _tc('', cell),
@@ -381,8 +409,8 @@ pw.Widget _memberTable(
 }
 
 pw.Widget _tc(String text, pw.TextStyle style) => pw.Padding(
-      padding:
-          const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 6, vertical: 4),
       child: pw.Text(text, style: style),
     );
 
@@ -423,12 +451,12 @@ pw.Widget _countChip(
   pw.Font regularFont,
 ) =>
     pw.Container(
-      padding:
-          const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 12, vertical: 5),
       decoration: pw.BoxDecoration(
         color: bgColor,
-        borderRadius:
-            const pw.BorderRadius.all(pw.Radius.circular(20)),
+        borderRadius: const pw.BorderRadius.all(
+            pw.Radius.circular(20)),
         border: pw.Border.all(color: textColor),
       ),
       child: pw.Row(
@@ -436,24 +464,33 @@ pw.Widget _countChip(
         children: [
           pw.Text('$count',
               style: pw.TextStyle(
-                  font: boldFont, fontSize: 13, color: textColor)),
+                  font: boldFont,
+                  fontSize: 13,
+                  color: textColor)),
           pw.SizedBox(width: 4),
           pw.Text(label,
               style: pw.TextStyle(
-                  font: regularFont, fontSize: 9, color: textColor)),
+                  font: regularFont,
+                  fontSize: 9,
+                  color: textColor)),
         ],
       ),
     );
 
-pw.Widget _fineChip(String label, pw.Font boldFont, pw.Font regularFont) =>
+pw.Widget _fineChip(
+        String label, pw.Font boldFont, pw.Font regularFont) =>
     pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 12, vertical: 5),
       decoration: pw.BoxDecoration(
         color: PdfColors.orange50,
-        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(20)),
+        borderRadius: const pw.BorderRadius.all(
+            pw.Radius.circular(20)),
         border: pw.Border.all(color: PdfColors.orange700),
       ),
       child: pw.Text(label,
           style: pw.TextStyle(
-              font: boldFont, fontSize: 10, color: PdfColors.orange900)),
+              font: boldFont,
+              fontSize: 10,
+              color: PdfColors.orange900)),
     );

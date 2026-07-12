@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../members_provider.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/member_pdf.dart';
-import '../../../database/app_database.dart';
+import '../../../models/member_model.dart';
 import '../../../shared/widgets/common_widgets.dart';
 
 class MembersScreen extends ConsumerStatefulWidget {
@@ -15,7 +15,7 @@ class MembersScreen extends ConsumerStatefulWidget {
 }
 
 class _MembersScreenState extends ConsumerState<MembersScreen> {
-  int? _selectedId;
+  String? _selectedId;
 
   @override
   Widget build(BuildContext context) {
@@ -40,13 +40,14 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
           ),
         ),
         actions: [
-          // ── Download full list as PDF ──────────────────────────────────
+          // ── Download full list as PDF ────────────────────────────────
           filtered.when(
-            data: (members) => _DownloadAllButton(members: members),
+            data: (members) =>
+                _DownloadAllButton(members: members),
             loading: () => const SizedBox.shrink(),
             error: (_, __) => const SizedBox.shrink(),
           ),
-          // ── Filter ────────────────────────────────────────────────────
+          // ── Filter ──────────────────────────────────────────────────
           Consumer(builder: (ctx, ref, _) {
             final blood = ref.watch(memberFilterBloodProvider);
             final status = ref.watch(memberFilterStatusProvider);
@@ -89,8 +90,9 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
               return _MemberTile(
                 member: m,
                 isSelected: _selectedId == m.id,
-                onTap: () => setState(
-                    () => _selectedId = _selectedId == m.id ? null : m.id),
+                onTap: () => setState(() =>
+                    _selectedId =
+                        _selectedId == m.id ? null : m.id),
                 onNavigate: () => context.go('/members/${m.id}'),
               );
             },
@@ -107,16 +109,17 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _FilterSheet(ref: ref),
     );
   }
 }
 
-// ── Member tile with selection + individual download ─────────────────────────
+// ── Member tile ───────────────────────────────────────────────────────────────
 
 class _MemberTile extends StatefulWidget {
-  final Member member;
+  final MemberModel member;
   final bool isSelected;
   final VoidCallback onTap;
   final VoidCallback onNavigate;
@@ -169,7 +172,8 @@ class _MemberTileState extends State<_MemberTile> {
             : cs.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: selected ? 0.08 : 0.04),
+            color:
+                Colors.black.withValues(alpha: selected ? 0.08 : 0.04),
             blurRadius: selected ? 8 : 4,
             offset: const Offset(0, 2),
           ),
@@ -182,25 +186,22 @@ class _MemberTileState extends State<_MemberTile> {
             leading: CircleAvatar(
               backgroundColor:
                   selected ? cs.primary : cs.primaryContainer,
-              backgroundImage: m.photoPath != null
-                  ? AssetImage(m.photoPath!)
-                  : null,
-              child: m.photoPath == null
-                  ? Text(m.name[0].toUpperCase(),
-                      style: TextStyle(
-                          color: selected
-                              ? cs.onPrimary
-                              : cs.onPrimaryContainer,
-                          fontWeight: FontWeight.bold))
-                  : null,
+              child: Text(m.name[0].toUpperCase(),
+                  style: TextStyle(
+                      color: selected
+                          ? cs.onPrimary
+                          : cs.onPrimaryContainer,
+                      fontWeight: FontWeight.bold)),
             ),
             title: Text(m.name,
-                style: const TextStyle(fontWeight: FontWeight.w500)),
+                style:
+                    const TextStyle(fontWeight: FontWeight.w500)),
             subtitle: Row(
               children: [
                 Text(m.mobile,
                     style: TextStyle(
-                        fontSize: 12, color: cs.onSurfaceVariant)),
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant)),
                 if (m.bloodGroup != null) ...[
                   const SizedBox(width: 8),
                   Container(
@@ -227,32 +228,39 @@ class _MemberTileState extends State<_MemberTile> {
                 StatusBadge(m.status),
                 const SizedBox(width: 4),
                 Icon(
-                  selected ? Icons.expand_less : Icons.chevron_right,
-                  color: selected ? cs.primary : cs.onSurfaceVariant,
+                  selected
+                      ? Icons.expand_less
+                      : Icons.chevron_right,
+                  color: selected
+                      ? cs.primary
+                      : cs.onSurfaceVariant,
                 ),
               ],
             ),
             onTap: widget.onTap,
           ),
-          // ── Expanded actions row — only when selected ─────────────────
+          // Expanded actions row — only when selected
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
             child: selected
                 ? Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                    padding:
+                        const EdgeInsets.fromLTRB(12, 0, 12, 10),
                     child: Row(
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: widget.onNavigate,
-                            icon: const Icon(Icons.visibility_outlined,
+                            icon: const Icon(
+                                Icons.visibility_outlined,
                                 size: 16),
                             label: const Text('View Profile'),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(
                                   vertical: 8),
-                              side: BorderSide(color: cs.primary),
+                              side:
+                                  BorderSide(color: cs.primary),
                             ),
                           ),
                         ),
@@ -266,18 +274,21 @@ class _MemberTileState extends State<_MemberTile> {
                                   child: SizedBox(
                                       width: 20,
                                       height: 20,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2)),
+                                      child:
+                                          CircularProgressIndicator(
+                                              strokeWidth: 2)),
                                 ))
                               : FilledButton.icon(
                                   onPressed: _downloadSingle,
                                   icon: const Icon(
                                       Icons.download_outlined,
                                       size: 16),
-                                  label: const Text('Download PDF'),
+                                  label:
+                                      const Text('Download PDF'),
                                   style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 8),
+                                    padding:
+                                        const EdgeInsets.symmetric(
+                                            vertical: 8),
                                   ),
                                 ),
                         ),
@@ -295,11 +306,12 @@ class _MemberTileState extends State<_MemberTile> {
 // ── Download all members button ───────────────────────────────────────────────
 
 class _DownloadAllButton extends StatefulWidget {
-  final List<Member> members;
+  final List<MemberModel> members;
   const _DownloadAllButton({required this.members});
 
   @override
-  State<_DownloadAllButton> createState() => _DownloadAllButtonState();
+  State<_DownloadAllButton> createState() =>
+      _DownloadAllButtonState();
 }
 
 class _DownloadAllButtonState extends State<_DownloadAllButton> {
@@ -360,8 +372,10 @@ class _FilterSheetState extends State<_FilterSheet> {
   }
 
   void _apply() {
-    widget.ref.read(memberFilterBloodProvider.notifier).state = _blood;
-    widget.ref.read(memberFilterStatusProvider.notifier).state = _status;
+    widget.ref.read(memberFilterBloodProvider.notifier).state =
+        _blood;
+    widget.ref.read(memberFilterStatusProvider.notifier).state =
+        _status;
     Navigator.of(context).pop();
   }
 
@@ -382,7 +396,10 @@ class _FilterSheetState extends State<_FilterSheet> {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
-          20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+          20,
+          20,
+          20,
+          MediaQuery.of(context).viewInsets.bottom + 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,7 +409,8 @@ class _FilterSheetState extends State<_FilterSheet> {
               const Expanded(
                 child: Text('Filter Members',
                     style: TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.bold)),
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold)),
               ),
               if (hasFilter)
                 TextButton(
@@ -415,8 +433,8 @@ class _FilterSheetState extends State<_FilterSheet> {
               return FilterChip(
                 label: Text(s),
                 selected: selected,
-                onSelected: (_) =>
-                    setState(() => _status = selected ? null : s),
+                onSelected: (_) => setState(
+                    () => _status = selected ? null : s),
                 selectedColor: cs.primaryContainer,
                 checkmarkColor: cs.primary,
               );
@@ -442,15 +460,17 @@ class _FilterSheetState extends State<_FilterSheet> {
                             : Colors.red.shade700,
                         fontWeight: FontWeight.w600)),
                 selected: selected,
-                onSelected: (_) =>
-                    setState(() => _blood = selected ? null : b),
-                selectedColor: Colors.red.withValues(alpha: 0.15),
+                onSelected: (_) => setState(
+                    () => _blood = selected ? null : b),
+                selectedColor:
+                    Colors.red.withValues(alpha: 0.15),
                 side: BorderSide(
                     color: selected
                         ? cs.primary
                         : Colors.red.withValues(alpha: 0.4)),
                 checkmarkColor: cs.primary,
-                backgroundColor: Colors.red.withValues(alpha: 0.05),
+                backgroundColor:
+                    Colors.red.withValues(alpha: 0.05),
               );
             }).toList(),
           ),

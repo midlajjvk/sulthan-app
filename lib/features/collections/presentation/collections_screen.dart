@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../collections_provider.dart';
-import '../../../database/app_database.dart';
-import '../../../shared/providers/core_providers.dart';
+import '../../../models/collection_model.dart';
+import '../../../models/payment_model.dart';
 import '../../../shared/widgets/common_widgets.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/constants/app_constants.dart';
@@ -52,17 +52,17 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen>
       ),
       body: allAsync.when(
         data: (all) {
-          final monthly = all
-              .where((c) => c.type == AppConstants.typeMonthly)
-              .toList();
-          final events = all
-              .where((c) => c.type == AppConstants.typeEvent)
-              .toList();
+          final monthly =
+              all.where((c) => c.type == AppConstants.typeMonthly).toList();
+          final events =
+              all.where((c) => c.type == AppConstants.typeEvent).toList();
           return TabBarView(
             controller: _tab,
             children: [
-              _CollectionList(collections: monthly, type: AppConstants.typeMonthly),
-              _CollectionList(collections: events, type: AppConstants.typeEvent),
+              _CollectionList(
+                  collections: monthly, type: AppConstants.typeMonthly),
+              _CollectionList(
+                  collections: events, type: AppConstants.typeEvent),
             ],
           );
         },
@@ -74,7 +74,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen>
 }
 
 class _CollectionList extends ConsumerWidget {
-  final List<Collection> collections;
+  final List<CollectionModel> collections;
   final String type;
   const _CollectionList({required this.collections, required this.type});
 
@@ -93,20 +93,27 @@ class _CollectionList extends ConsumerWidget {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
       itemCount: collections.length,
-      itemBuilder: (ctx, i) => _CollectionCard(collection: collections[i], ref: ref),
+      itemBuilder: (ctx, i) =>
+          _CollectionCard(collection: collections[i], ref: ref),
     );
   }
 }
 
-class _CollectionCard extends StatelessWidget {
-  final Collection collection;
+// ── Collection card with live payment summary ─────────────────────────────────
+
+class _CollectionCard extends ConsumerWidget {
+  final CollectionModel collection;
   final WidgetRef ref;
   const _CollectionCard({required this.collection, required this.ref});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef widgetRef) {
     final cs = Theme.of(context).colorScheme;
     final isMonthly = collection.type == AppConstants.typeMonthly;
+
+    // Watch the live payment stream for this collection
+    final paymentsAsync =
+        widgetRef.watch(collectionPaymentsProvider(collection.id));
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -115,77 +122,104 @@ class _CollectionCard extends StatelessWidget {
         onTap: () => context.go('/collections/${collection.id}'),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: FutureBuilder<List<Payment>>(
-            future: ref.read(dbProvider).getPaymentsForCollection(collection.id),
-            builder: (ctx, snap) {
-              final payments = snap.data ?? [];
-              final paid = payments
-                  .where((p) => p.status == AppConstants.statusPaid)
-                  .length;
-              final total = payments.length;
-              final collected = payments
-                  .where((p) => p.status != AppConstants.statusPending)
-                  .fold(0.0, (s, p) => s + p.paidAmount);
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: (isMonthly ? cs.primary : Colors.purple)
-                            .withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        isMonthly
-                            ? Icons.calendar_month
-                            : Icons.celebration_outlined,
-                        color: isMonthly ? cs.primary : Colors.purple,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(collection.title,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600, fontSize: 15)),
-                          Text(
-                            isMonthly && collection.month != null
-                                ? Fmt.monthYearOf(
-                                    collection.month!, collection.year!)
-                                : Fmt.date(collection.dateCreated),
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: cs.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Text(Fmt.money(collection.amountPerMember),
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: cs.primary,
-                            fontSize: 15)),
-                  ]),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    _Pill('${paid}/${total} Paid', Colors.green),
-                    const SizedBox(width: 8),
-                    _Pill('Collected ${Fmt.money(collected)}', cs.primary),
-                    const Spacer(),
-                    Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
-                  ]),
-                ],
-              );
-            },
+          child: paymentsAsync.when(
+            loading: () => _CardContent(
+              collection: collection,
+              isMonthly: isMonthly,
+              payments: const [],
+              cs: cs,
+            ),
+            error: (_, __) => _CardContent(
+              collection: collection,
+              isMonthly: isMonthly,
+              payments: const [],
+              cs: cs,
+            ),
+            data: (payments) => _CardContent(
+              collection: collection,
+              isMonthly: isMonthly,
+              payments: payments,
+              cs: cs,
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CardContent extends StatelessWidget {
+  final CollectionModel collection;
+  final bool isMonthly;
+  final List<PaymentModel> payments;
+  final ColorScheme cs;
+
+  const _CardContent({
+    required this.collection,
+    required this.isMonthly,
+    required this.payments,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final paid =
+        payments.where((p) => p.status == AppConstants.statusPaid).length;
+    final total = payments.length;
+    final collected = payments
+        .where((p) => p.status != AppConstants.statusPending)
+        .fold(0.0, (s, p) => s + p.paidAmount);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color:
+                  (isMonthly ? cs.primary : Colors.purple).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              isMonthly ? Icons.calendar_month : Icons.celebration_outlined,
+              color: isMonthly ? cs.primary : Colors.purple,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(collection.title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 15)),
+                Text(
+                  isMonthly && collection.month != null
+                      ? Fmt.monthYearOf(collection.month!, collection.year!)
+                      : Fmt.date(collection.dateCreated ?? DateTime.now()),
+                  style:
+                      TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          Text(Fmt.money(collection.amountPerMember),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: cs.primary,
+                  fontSize: 15)),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          _Pill('$paid/$total Paid', Colors.green),
+          const SizedBox(width: 8),
+          _Pill('Collected ${Fmt.money(collected)}', cs.primary),
+          const Spacer(),
+          Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+        ]),
+      ],
     );
   }
 }

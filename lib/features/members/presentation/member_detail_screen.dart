@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../database/app_database.dart';
+import '../../../models/member_model.dart';
+import '../../../models/payment_model.dart';
+import '../../../models/collection_model.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/common_widgets.dart';
 import '../../../core/utils/formatters.dart';
@@ -9,20 +11,21 @@ import '../../../core/utils/member_pdf.dart';
 import '../../../core/constants/app_constants.dart';
 
 class MemberDetailScreen extends ConsumerWidget {
-  final int id;
+  final String id;
   const MemberDetailScreen({super.key, required this.id});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
 
-    return FutureBuilder<Member?>(
-      future: ref.read(dbProvider).getMemberById(id),
+    return FutureBuilder<MemberModel?>(
+      future: ref.read(memberRepositoryProvider).getMemberById(id),
       builder: (ctx, snap) {
         if (!snap.hasData) return const Scaffold(body: LoadingView());
         final m = snap.data;
         if (m == null) {
-          return const Scaffold(body: Center(child: Text('Member not found')));
+          return const Scaffold(
+              body: Center(child: Text('Member not found')));
         }
 
         return Scaffold(
@@ -36,13 +39,17 @@ class MemberDetailScreen extends ConsumerWidget {
               ),
             ],
           ),
-          body: FutureBuilder<List<Payment>>(
-            future: ref.read(dbProvider).getPaymentsForMember(id),
+          body: FutureBuilder<List<PaymentModel>>(
+            future:
+                ref.read(paymentRepositoryProvider).getPaymentsForMember(id),
             builder: (ctx, pSnap) {
               final payments = pSnap.data ?? [];
               final totalPaid = payments
                   .where((p) => p.status != AppConstants.statusPending)
-                  .fold(0.0, (s, p) => s + p.paidAmount + (p.fineAmount ?? 0));
+                  .fold(
+                      0.0,
+                      (s, p) =>
+                          s + p.paidAmount + (p.fineAmount ?? 0));
 
               return ListView(
                 padding: const EdgeInsets.all(16),
@@ -64,25 +71,32 @@ class MemberDetailScreen extends ConsumerWidget {
                         const SizedBox(width: 16),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             children: [
                               Text(m.name,
                                   style: Theme.of(context)
                                       .textTheme
                                       .titleLarge
-                                      ?.copyWith(fontWeight: FontWeight.bold)),
+                                      ?.copyWith(
+                                          fontWeight: FontWeight.bold)),
                               const SizedBox(height: 4),
                               _InfoRow(Icons.phone_outlined, m.mobile),
-                              if (m.email != null) _InfoRow(Icons.email_outlined, m.email!),
+                              if (m.email != null)
+                                _InfoRow(Icons.email_outlined, m.email!),
                               if (m.dateOfBirth != null)
-                                _InfoRow(Icons.cake_outlined,
+                                _InfoRow(
+                                    Icons.cake_outlined,
                                     '${Fmt.date(m.dateOfBirth!)} (Age ${Fmt.age(m.dateOfBirth!)})'),
                               if (m.bloodGroup != null)
-                                _InfoRow(Icons.bloodtype_outlined, m.bloodGroup!),
+                                _InfoRow(Icons.bloodtype_outlined,
+                                    m.bloodGroup!),
                               if (m.address != null)
-                                _InfoRow(Icons.location_on_outlined, m.address!),
+                                _InfoRow(Icons.location_on_outlined,
+                                    m.address!),
                               if (m.additionalInfo != null)
-                                _InfoRow(Icons.info_outline, m.additionalInfo!),
+                                _InfoRow(Icons.info_outline,
+                                    m.additionalInfo!),
                               const SizedBox(height: 6),
                               StatusBadge(m.status),
                             ],
@@ -98,22 +112,25 @@ class MemberDetailScreen extends ConsumerWidget {
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Row(children: [
-                        Icon(Icons.payments_outlined, color: Colors.green),
+                        const Icon(Icons.payments_outlined,
+                            color: Colors.green),
                         const SizedBox(width: 12),
-                        Column(crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                          Text(Fmt.money(totalPaid),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                  fontSize: 20)),
-                          Text('Total Paid',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant)),
-                        ]),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(Fmt.money(totalPaid),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                    fontSize: 20)),
+                            Text('Total Paid',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant)),
+                          ],
+                        ),
                       ]),
                     ),
                   ),
@@ -124,7 +141,8 @@ class MemberDetailScreen extends ConsumerWidget {
                         icon: Icons.receipt_long_outlined,
                         title: 'No payment history')
                   else
-                    ...payments.map((p) => _PaymentTile(payment: p, ref: ref)),
+                    ...payments.map(
+                        (p) => _PaymentTile(payment: p, ref: ref)),
                 ],
               );
             },
@@ -139,18 +157,23 @@ class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String text;
   const _InfoRow(this.icon, this.text);
+
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(top: 2),
         child: Row(children: [
-          Icon(icon, size: 13,
-              color: Theme.of(context).colorScheme.onSurfaceVariant),
+          Icon(icon,
+              size: 13,
+              color:
+                  Theme.of(context).colorScheme.onSurfaceVariant),
           const SizedBox(width: 4),
           Expanded(
             child: Text(text,
                 style: TextStyle(
                     fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant),
                 overflow: TextOverflow.ellipsis),
           ),
         ]),
@@ -158,15 +181,17 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _PaymentTile extends StatelessWidget {
-  final Payment payment;
+  final PaymentModel payment;
   final WidgetRef ref;
   const _PaymentTile({required this.payment, required this.ref});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return FutureBuilder<Collection?>(
-      future: ref.read(dbProvider).getCollectionById(payment.collectionId),
+    return FutureBuilder<CollectionModel?>(
+      future: ref
+          .read(collectionRepositoryProvider)
+          .getCollectionById(payment.collectionId),
       builder: (ctx, snap) {
         final col = snap.data;
         return Card(
@@ -174,34 +199,40 @@ class _PaymentTile extends StatelessWidget {
           child: ListTile(
             dense: true,
             title: Text(col?.title ?? 'Collection',
-                style: const TextStyle(fontWeight: FontWeight.w500)),
+                style:
+                    const TextStyle(fontWeight: FontWeight.w500)),
             subtitle: Text(
               payment.paymentDate != null
                   ? Fmt.date(payment.paymentDate!)
                   : 'No date',
-              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+              style: TextStyle(
+                  fontSize: 11, color: cs.onSurfaceVariant),
             ),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              Column(
+            trailing: Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(Fmt.money(payment.paidAmount),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.green)),
-                  if (payment.fineAmount != null && payment.fineAmount! > 0)
-                    Text(
-                      'Fine: ${Fmt.money(payment.fineAmount!)}',
-                      style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.red,
-                          fontWeight: FontWeight.w600),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 8),
-              StatusBadge(payment.status),
-            ]),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(Fmt.money(payment.paidAmount),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green)),
+                      if (payment.fineAmount != null &&
+                          payment.fineAmount! > 0)
+                        Text(
+                          'Fine: ${Fmt.money(payment.fineAmount!)}',
+                          style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  StatusBadge(payment.status),
+                ]),
           ),
         );
       },
@@ -212,11 +243,12 @@ class _PaymentTile extends StatelessWidget {
 // ── Download button for detail screen ────────────────────────────────────────
 
 class _DetailDownloadButton extends StatefulWidget {
-  final Member member;
+  final MemberModel member;
   const _DetailDownloadButton({required this.member});
 
   @override
-  State<_DetailDownloadButton> createState() => _DetailDownloadButtonState();
+  State<_DetailDownloadButton> createState() =>
+      _DetailDownloadButtonState();
 }
 
 class _DetailDownloadButtonState extends State<_DetailDownloadButton> {

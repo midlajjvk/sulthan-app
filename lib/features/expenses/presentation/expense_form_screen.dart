@@ -1,10 +1,6 @@
-import 'dart:developer' as dev;
-
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../database/app_database.dart';
 import '../../../models/expense_model.dart';
 import '../../../shared/providers/core_providers.dart';
 import '../../../shared/widgets/common_widgets.dart';
@@ -12,28 +8,28 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/formatters.dart';
 
 class ExpenseFormScreen extends ConsumerStatefulWidget {
-  final int? id;
+  final String? id;
   const ExpenseFormScreen({super.key, this.id});
 
   @override
-  ConsumerState<ExpenseFormScreen> createState() => _ExpenseFormScreenState();
+  ConsumerState<ExpenseFormScreen> createState() =>
+      _ExpenseFormScreenState();
 }
 
-class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
+class _ExpenseFormScreenState
+    extends ConsumerState<ExpenseFormScreen> {
   final _form = GlobalKey<FormState>();
   final _purpose = TextEditingController();
   final _amount = TextEditingController();
   final _notes = TextEditingController();
   final _customCategory = TextEditingController();
 
-  /// The value shown in the dropdown. If the saved category isn't one of the
-  /// fixed options we treat it as "Other" and pre-fill the custom field.
   String _category = AppConstants.expenseCategories.first;
   bool get _isOther => _category == 'Other';
 
   DateTime _date = DateTime.now();
   bool _loading = false;
-  Expense? _existing;
+  ExpenseModel? _existing;
 
   @override
   void initState() {
@@ -42,10 +38,12 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   }
 
   Future<void> _load() async {
-    final expenses = await ref.read(dbProvider).getExpenses();
-    final e = expenses.where((e) => e.id == widget.id).firstOrNull;
+    final e = await ref
+        .read(expenseRepositoryProvider)
+        .getExpenseById(widget.id!);
     if (e != null && mounted) {
-      final isFixed = AppConstants.expenseCategories.contains(e.category);
+      final isFixed =
+          AppConstants.expenseCategories.contains(e.category);
       setState(() {
         _existing = e;
         _purpose.text = e.purpose;
@@ -55,7 +53,6 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
         if (isFixed) {
           _category = e.category;
         } else {
-          // Saved value was a custom "Other" category
           _category = 'Other';
           _customCategory.text = e.category;
         }
@@ -72,65 +69,52 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
     super.dispose();
   }
 
-  /// Returns the final category string to save — custom text if "Other".
   String get _resolvedCategory =>
       _isOther ? _customCategory.text.trim() : _category;
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     setState(() => _loading = true);
-    final db = ref.read(dbProvider);
-    final fsRepo = ref.read(expenseRepositoryProvider);
+    final repo = ref.read(expenseRepositoryProvider);
     try {
       final amt = double.parse(_amount.text);
+      final now = DateTime.now();
+
       if (_existing == null) {
-        final newId = await db.insertExpense(ExpensesCompanion.insert(
-          purpose: _purpose.text.trim(),
-          amount: amt,
-          category: _resolvedCategory,
-          date: _date,
-          notes: Value(_notes.text.trim().isEmpty ? null : _notes.text.trim()),
-        ));
         final model = ExpenseModel(
-          id: newId.toString(),
+          id: '',
           purpose: _purpose.text.trim(),
           amount: amt,
           category: _resolvedCategory,
           date: _date,
-          notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-          createdAt: DateTime.now(),
+          notes: _notes.text.trim().isEmpty
+              ? null
+              : _notes.text.trim(),
+          createdAt: now,
         );
-        try {
-          await fsRepo.addExpense(model);
-          dev.log('Firestore addExpense OK — id=$newId', name: 'ExpenseForm');
-        } catch (e) {
-          dev.log('Firestore addExpense FAILED: $e', name: 'ExpenseForm', error: e);
-        }
+        await repo.addExpense(model);
       } else {
-        await db.updateExpense(ExpensesCompanion(
-          id: Value(_existing!.id),
-          purpose: Value(_purpose.text.trim()),
-          amount: Value(amt),
-          category: Value(_resolvedCategory),
-          date: Value(_date),
-          notes: Value(_notes.text.trim().isEmpty ? null : _notes.text.trim()),
-        ));
         final model = ExpenseModel(
-          id: _existing!.id.toString(),
+          id: _existing!.id,
           purpose: _purpose.text.trim(),
           amount: amt,
           category: _resolvedCategory,
           date: _date,
-          notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+          notes: _notes.text.trim().isEmpty
+              ? null
+              : _notes.text.trim(),
+          createdAt: _existing!.createdAt,
         );
-        try {
-          await fsRepo.updateExpense(model);
-          dev.log('Firestore updateExpense OK — id=${_existing!.id}', name: 'ExpenseForm');
-        } catch (e) {
-          dev.log('Firestore updateExpense FAILED: $e', name: 'ExpenseForm', error: e);
-        }
+        await repo.updateExpense(model);
       }
+
       if (mounted) context.pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save expense: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -139,15 +123,21 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   Future<void> _delete() async {
     final ok = await confirmDelete(context);
     if (ok == true && mounted) {
-      final fsRepo = ref.read(expenseRepositoryProvider);
-      await ref.read(dbProvider).deleteExpense(_existing!.id);
+      setState(() => _loading = true);
       try {
-        await fsRepo.deleteExpense(_existing!.id.toString());
-        dev.log('Firestore deleteExpense OK — id=${_existing!.id}', name: 'ExpenseForm');
+        await ref
+            .read(expenseRepositoryProvider)
+            .deleteExpense(_existing!.id);
+        if (mounted) context.go('/expenses');
       } catch (e) {
-        dev.log('Firestore deleteExpense FAILED: $e', name: 'ExpenseForm', error: e);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Failed to delete expense: $e')),
+          );
+          setState(() => _loading = false);
+        }
       }
-      if (mounted) context.go('/expenses');
     }
   }
 
@@ -163,7 +153,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
           if (isEdit)
             IconButton(
               icon: Icon(Icons.delete_outline, color: cs.error),
-              onPressed: _delete,
+              onPressed: _loading ? null : _delete,
             ),
         ],
       ),
@@ -172,7 +162,6 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            // Purpose
             TextFormField(
               controller: _purpose,
               decoration: const InputDecoration(
@@ -184,27 +173,24 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                   v == null || v.trim().isEmpty ? 'Required' : null,
             ),
             const SizedBox(height: 14),
-
-            // Amount
             TextFormField(
               controller: _amount,
               decoration: InputDecoration(
                 labelText: 'Amount *',
                 prefixText: '${AppConstants.currency} ',
               ),
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true),
               validator: (v) {
                 if (v == null || v.isEmpty) return 'Required';
-                if (double.tryParse(v) == null || double.parse(v) <= 0) {
+                if (double.tryParse(v) == null ||
+                    double.parse(v) <= 0) {
                   return 'Enter valid amount';
                 }
                 return null;
               },
             ),
             const SizedBox(height: 14),
-
-            // Category dropdown
             DropdownButtonFormField<String>(
               initialValue: _category,
               decoration: const InputDecoration(
@@ -212,7 +198,8 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                 prefixIcon: Icon(Icons.category_outlined),
               ),
               items: AppConstants.expenseCategories
-                  .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                  .map((c) =>
+                      DropdownMenuItem(value: c, child: Text(c)))
                   .toList(),
               onChanged: (v) {
                 if (v == null) return;
@@ -222,8 +209,6 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                 });
               },
             ),
-
-            // Custom category field — only visible when "Other" is selected
             AnimatedSize(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOut,
@@ -235,9 +220,11 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Specify Category *',
                           prefixIcon: Icon(Icons.edit_outlined),
-                          hintText: 'e.g. Fuel, Printing, Donation…',
+                          hintText:
+                              'e.g. Fuel, Printing, Donation…',
                         ),
-                        textCapitalization: TextCapitalization.sentences,
+                        textCapitalization:
+                            TextCapitalization.sentences,
                         autofocus: true,
                         validator: (v) {
                           if (_isOther &&
@@ -251,8 +238,6 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                   : const SizedBox.shrink(),
             ),
             const SizedBox(height: 14),
-
-            // Date
             InkWell(
               onTap: () async {
                 final d = await showDatePicker(
@@ -266,14 +251,13 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
               child: InputDecorator(
                 decoration: const InputDecoration(
                   labelText: 'Date *',
-                  prefixIcon: Icon(Icons.calendar_today_outlined),
+                  prefixIcon:
+                      Icon(Icons.calendar_today_outlined),
                 ),
                 child: Text(Fmt.date(_date)),
               ),
             ),
             const SizedBox(height: 14),
-
-            // Notes
             TextFormField(
               controller: _notes,
               decoration: const InputDecoration(
@@ -283,14 +267,14 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
               maxLines: 2,
             ),
             const SizedBox(height: 28),
-
             FilledButton(
               onPressed: _loading ? null : _save,
               child: _loading
                   ? const SizedBox(
                       height: 20,
                       width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2))
                   : Text(isEdit ? 'Save Changes' : 'Add Expense'),
             ),
           ],

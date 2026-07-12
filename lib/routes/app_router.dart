@@ -11,8 +11,6 @@ import '../features/expenses/presentation/expenses_screen.dart';
 import '../features/expenses/presentation/expense_form_screen.dart';
 import '../features/reports/presentation/reports_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
-// TEMPORARY — remove this import after migration is complete.
-import '../features/settings/presentation/migration_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/dashboard',
@@ -22,22 +20,27 @@ final appRouter = GoRouter(
       routes: [
         GoRoute(
           path: '/dashboard',
-          pageBuilder: (c, s) => const NoTransitionPage(child: DashboardScreen()),
+          pageBuilder: (c, s) =>
+              const NoTransitionPage(child: DashboardScreen()),
         ),
         GoRoute(
           path: '/members',
-          pageBuilder: (c, s) => const NoTransitionPage(child: MembersScreen()),
+          pageBuilder: (c, s) =>
+              const NoTransitionPage(child: MembersScreen()),
           routes: [
-            GoRoute(path: 'add', builder: (c, s) => const MemberFormScreen()),
+            GoRoute(
+              path: 'add',
+              builder: (c, s) => const MemberFormScreen(),
+            ),
             GoRoute(
               path: ':id',
-              builder: (c, s) =>
-                  MemberDetailScreen(id: int.parse(s.pathParameters['id']!)),
+              builder: (c, s) => MemberDetailScreen(
+                  id: s.pathParameters['id']!),
               routes: [
                 GoRoute(
                   path: 'edit',
                   builder: (c, s) => MemberFormScreen(
-                      id: int.parse(s.pathParameters['id']!)),
+                      id: s.pathParameters['id']),
                 ),
               ],
             ),
@@ -48,16 +51,19 @@ final appRouter = GoRouter(
           pageBuilder: (c, s) =>
               const NoTransitionPage(child: CollectionsScreen()),
           routes: [
-            GoRoute(path: 'add', builder: (c, s) => const CollectionFormScreen()),
+            GoRoute(
+              path: 'add',
+              builder: (c, s) => const CollectionFormScreen(),
+            ),
             GoRoute(
               path: ':id',
               builder: (c, s) => CollectionDetailScreen(
-                  id: int.parse(s.pathParameters['id']!)),
+                  id: s.pathParameters['id']!),
               routes: [
                 GoRoute(
                   path: 'edit',
                   builder: (c, s) => CollectionFormScreen(
-                      id: int.parse(s.pathParameters['id']!)),
+                      id: s.pathParameters['id']),
                 ),
               ],
             ),
@@ -68,11 +74,14 @@ final appRouter = GoRouter(
           pageBuilder: (c, s) =>
               const NoTransitionPage(child: ExpensesScreen()),
           routes: [
-            GoRoute(path: 'add', builder: (c, s) => const ExpenseFormScreen()),
+            GoRoute(
+              path: 'add',
+              builder: (c, s) => const ExpenseFormScreen(),
+            ),
             GoRoute(
               path: ':id/edit',
               builder: (c, s) => ExpenseFormScreen(
-                  id: int.parse(s.pathParameters['id']!)),
+                  id: s.pathParameters['id']),
             ),
           ],
         ),
@@ -81,10 +90,12 @@ final appRouter = GoRouter(
           pageBuilder: (c, s) =>
               const NoTransitionPage(child: ReportsScreen()),
         ),
+        GoRoute(
+          path: '/settings',
+          pageBuilder: (c, s) =>
+              const NoTransitionPage(child: SettingsScreen()),
+        ),
       ],
     ),
-    GoRoute(path: '/settings', builder: (c, s) => const SettingsScreen()),
-    // TEMPORARY — remove after migration is complete.
-    GoRoute(path: '/settings/migrate', builder: (c, s) => const MigrationScreen()),
   ],
 );

@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "400182855595",
-    "project_id": "sult-b9b82",
-    "storage_bucket": "sult-b9b82.firebasestorage.app"
+    "project_number": "161614075971",
+    "project_id": "sulthan-95049",
+    "storage_bucket": "sulthan-95049.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:400182855595:android:351258463276440247f4ee",
+        "mobilesdk_app_id": "1:161614075971:android:2e012c7a2f953a96ae9cf6",
         "android_client_info": {
           "package_name": "com.sulthan.sulthan"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAyuSlYnSPiOKeWPQm6Rmk3zWTxvcBl5KY"
+          "current_key": "AIzaSyDt-baVpovRvReLBXokXdNNCHXCbduYgrw"
         }
       ],
       "services": {
