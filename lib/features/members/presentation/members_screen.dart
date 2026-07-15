@@ -183,15 +183,11 @@ class _MemberTileState extends State<_MemberTile> {
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: CircleAvatar(
-              backgroundColor:
-                  selected ? cs.primary : cs.primaryContainer,
-              child: Text(m.name[0].toUpperCase(),
-                  style: TextStyle(
-                      color: selected
-                          ? cs.onPrimary
-                          : cs.onPrimaryContainer,
-                      fontWeight: FontWeight.bold)),
+            leading: MemberAvatar(
+              photoBytes: m.photo,
+              name: m.name,
+              radius: 20,
+              selected: selected,
             ),
             title: Text(m.name,
                 style:

@@ -370,6 +370,61 @@ class PaymentRepository {
     }
   }
 
+  /// Returns a map of **memberId → list of pending month labels** for all
+  /// MONTHLY collections.
+  ///
+  /// Only payments with `status == 'Pending'` are included.  Each label is
+  /// the human-readable month+year string of the collection (e.g. "July 2025").
+  ///
+  /// The [monthlyCollections] list must contain the full [CollectionModel]
+  /// objects (not just IDs) so that month/year labels can be resolved without
+  /// additional Firestore reads.
+  Future<Map<String, List<String>>> getPendingMembersForCollections(
+    List<CollectionModel> monthlyCollections,
+  ) async {
+    if (monthlyCollections.isEmpty) return {};
+
+    // Build a quick id→collection lookup for label resolution
+    final colById = {for (final c in monthlyCollections) c.id: c};
+    final allIds = colById.keys.toList();
+
+    final result = <String, List<String>>{};
+
+    try {
+      // Firestore whereIn supports max 30 items; chunk if needed
+      for (var i = 0; i < allIds.length; i += 30) {
+        final chunk = allIds.sublist(
+          i,
+          (i + 30) > allIds.length ? allIds.length : i + 30,
+        );
+        final snap = await _col
+            .where('collectionId', whereIn: chunk)
+            .where('status', isEqualTo: 'Pending')
+            .get();
+
+        for (final doc in snap.docs) {
+          final d = doc.data();
+          final memberId = d['memberId'] as String? ?? '';
+          final collectionId = d['collectionId'] as String? ?? '';
+          if (memberId.isEmpty) continue;
+
+          final col = colById[collectionId];
+          final label = (col?.month != null && col?.year != null)
+              ? '${CollectionUtils.monthName(col!.month!)} ${col.year}'
+              : 'Unknown';
+
+          result.putIfAbsent(memberId, () => []).add(label);
+        }
+      }
+      return result;
+    } on FirebaseException catch (e) {
+      throw Exception(
+          'getPendingMembersForCollections failed [${e.code}]: ${e.message}');
+    } catch (e) {
+      throw Exception('getPendingMembersForCollections failed: $e');
+    }
+  }
+
   /// Saves an advance payment.
   /// [paymentId] is the existing Firestore document ID to update.
   Future<void> saveAdvancePayment({

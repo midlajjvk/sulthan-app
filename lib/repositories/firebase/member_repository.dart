@@ -1,11 +1,20 @@
+import 'dart:developer' as developer;
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 import '../../models/member_model.dart';
 import '../../services/firebase/firebase_service.dart';
 
 /// Repository that owns all Firestore reads and writes for the `members`
-/// collection.  This is now the ONLY data layer for members — Drift has been
-/// removed.
+/// collection.
+///
+/// Image processing is performed here (not in the UI layer):
+///   1. Resize to at most 256 × 256 px (aspect-preserving downscale).
+///   2. Compress to JPEG at 80 % quality.
+///   3. Resulting [Uint8List] is stored as a Firestore [Blob] inside the
+///      member document — no Firebase Storage is used.
 class MemberRepository {
   final FirebaseService _service;
 
@@ -15,8 +24,74 @@ class MemberRepository {
   CollectionReference<Map<String, dynamic>> get _col =>
       _service.firestore.collection('members');
 
+  // ── Image processing ───────────────────────────────────────────────────────
+
+  /// Resizes and compresses raw image bytes to a profile-picture-sized JPEG.
+  ///
+  /// ### How minWidth / minHeight work in flutter_image_compress
+  /// Despite the parameter names, these are **maximum output dimensions**:
+  /// the plugin scales the image down so that the longer side fits within the
+  /// given box while preserving the aspect ratio.  It never upscales.
+  /// Passing 256 × 256 means the output will be at most 256 px on either side.
+  ///
+  /// Target: ≤ 256 × 256 px, JPEG quality 80 → roughly 10–50 KB.
+  /// Well within Firestore's 1 MiB document limit.
+  Future<Uint8List> processImage(Uint8List rawBytes) async {
+    developer.log(
+      '[processImage] entered — rawBytes.length = ${rawBytes.length} bytes '
+      '(${(rawBytes.length / 1024).toStringAsFixed(1)} KB)',
+      name: 'MemberRepository',
+    );
+
+    try {
+      developer.log(
+        '[processImage] calling FlutterImageCompress.compressWithList …',
+        name: 'MemberRepository',
+      );
+
+      final compressed = await FlutterImageCompress.compressWithList(
+        rawBytes,
+        minWidth: 256,
+        minHeight: 256,
+        quality: 80,
+        format: CompressFormat.jpeg,
+      );
+
+      developer.log(
+        '[processImage] compressWithList returned — '
+        'compressed.length = ${compressed.length} bytes '
+        '(${(compressed.length / 1024).toStringAsFixed(1)} KB)',
+        name: 'MemberRepository',
+      );
+
+      if (compressed.isEmpty) {
+        throw Exception(
+          'compressWithList returned an empty list. '
+          'rawBytes.length was ${rawBytes.length}.',
+        );
+      }
+
+      return compressed;
+    } catch (e, st) {
+      developer.log(
+        '[processImage] EXCEPTION: $e',
+        name: 'MemberRepository',
+        error: e,
+        stackTrace: st,
+      );
+      // Re-throw the original exception with full detail so callers can
+      // surface the real message instead of a generic fallback.
+      rethrow;
+    }
+  }
+
   // ── Write operations ───────────────────────────────────────────────────────
 
+  /// Saves a new member document to Firestore.
+  ///
+  /// If [member.id] is empty Firestore auto-generates the document ID.
+  /// The [member.photo] bytes (if any) are already processed before this call
+  /// and are written as a [Blob] by [MemberModel.toFirestore].
   Future<void> addMember(MemberModel member) async {
     try {
       if (member.id.isEmpty) {
@@ -31,6 +106,9 @@ class MemberRepository {
     }
   }
 
+  /// Updates an existing member document in Firestore.
+  ///
+  /// All fields including [member.photo] (Blob) are overwritten.
   Future<void> updateMember(MemberModel member) async {
     try {
       await _col.doc(member.id).update(member.toFirestore());

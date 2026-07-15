@@ -16,8 +16,6 @@ class MemberDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-
     return FutureBuilder<MemberModel?>(
       future: ref.read(memberRepositoryProvider).getMemberById(id),
       builder: (ctx, snap) {
@@ -59,14 +57,11 @@ class MemberDetailScreen extends ConsumerWidget {
                     child: Padding(
                       padding: const EdgeInsets.all(20),
                       child: Row(children: [
-                        CircleAvatar(
+                        MemberAvatar(
+                          photoBytes: m.photo,
+                          name: m.name,
                           radius: 36,
-                          backgroundColor: cs.primaryContainer,
-                          child: Text(m.name[0].toUpperCase(),
-                              style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  color: cs.onPrimaryContainer)),
+                          fontSize: 28,
                         ),
                         const SizedBox(width: 16),
                         Expanded(

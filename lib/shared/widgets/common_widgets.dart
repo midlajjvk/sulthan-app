@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -208,4 +210,58 @@ class SectionHeader extends StatelessWidget {
           if (action != null) action!,
         ]),
       );
+}
+
+// ── Member avatar ─────────────────────────────────────────────────────────────
+
+/// A circular avatar that displays the member's profile photo when available,
+/// falling back to the member's initial on a coloured background.
+///
+/// [photoBytes] — compressed JPEG bytes loaded from the Firestore Blob field.
+/// [name]       — member name; first character is used as the fallback initial.
+/// [radius]     — avatar radius (default 20, suitable for list tiles).
+/// [fontSize]   — font size of the fallback initial (default scales with radius).
+class MemberAvatar extends StatelessWidget {
+  final Uint8List? photoBytes;
+  final String name;
+  final double radius;
+  final double? fontSize;
+  final bool selected;
+
+  const MemberAvatar({
+    super.key,
+    required this.photoBytes,
+    required this.name,
+    this.radius = 20,
+    this.fontSize,
+    this.selected = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final effectiveFontSize = fontSize ?? (radius * 0.7);
+
+    if (photoBytes != null && photoBytes!.isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: MemoryImage(photoBytes!),
+        backgroundColor: selected ? cs.primary : cs.primaryContainer,
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: selected ? cs.primary : cs.primaryContainer,
+      child: Text(
+        initial,
+        style: TextStyle(
+          color: selected ? cs.onPrimary : cs.onPrimaryContainer,
+          fontWeight: FontWeight.bold,
+          fontSize: effectiveFontSize,
+        ),
+      ),
+    );
+  }
 }

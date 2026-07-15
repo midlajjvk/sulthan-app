@@ -1,11 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Immutable representation of a member document stored in Firestore.
-///
-/// The class is intentionally decoupled from Drift — it has no dependency on
-/// any local-database type.  The only external import is [cloud_firestore],
-/// which is needed for [Timestamp] ↔ [DateTime] conversion and the
-/// [DocumentSnapshot] factory.
 ///
 /// Firestore document layout (collection: `members`):
 /// ```
@@ -16,7 +13,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 ///   "address":        "123 Main St",            // nullable
 ///   "dateOfBirth":    Timestamp,                // nullable
 ///   "bloodGroup":     "O+",                     // nullable
-///   "photoUrl":       "https://...",            // nullable
+///   "photo":          Blob,                     // nullable — compressed JPEG bytes
 ///   "status":         "Active",                 // default "Active"
 ///   "additionalInfo": "...",                    // nullable
 ///   "createdAt":      Timestamp,                // nullable
@@ -28,14 +25,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class MemberModel {
   // ── Fields ──────────────────────────────────────────────────────────────
 
-  /// Firestore document ID.  Set from [DocumentSnapshot.id]; never persisted
-  /// inside the document body (no `id` key in [toFirestore] / [toMap]).
+  /// Firestore document ID.
   final String id;
 
-  /// Full name of the member.  Required — must not be empty.
+  /// Full name of the member.
   final String name;
 
-  /// Mobile number.  Required and unique across members.
+  /// Mobile number — required and unique.
   final String mobile;
 
   /// Optional email address.
@@ -47,17 +43,17 @@ class MemberModel {
   /// Optional date of birth.
   final DateTime? dateOfBirth;
 
-  /// Optional blood group, e.g. `'O+'`.  Valid values are defined in
-  /// [AppConstants.bloodGroups].
+  /// Optional blood group, e.g. `'O+'`.
   final String? bloodGroup;
 
-  /// Optional URL of the member's profile photo stored in Firebase Storage.
-  /// Note: the local-database layer uses `photoPath` (a device file path);
-  /// this field stores a remote HTTPS URL.
-  final String? photoUrl;
+  /// Optional profile picture stored as compressed JPEG bytes.
+  ///
+  /// In Firestore this is persisted as a [Blob] so the bytes are stored
+  /// natively (no Base64 overhead).  In Dart the value is a plain [Uint8List].
+  /// Typically 30–80 KB after 256×256 resize at 80 % JPEG quality.
+  final Uint8List? photo;
 
-  /// Membership status.  Typically `'Active'` or `'Inactive'`.
-  /// Defaults to `'Active'` when constructing a new member.
+  /// Membership status — `'Active'` or `'Inactive'`.
   final String status;
 
   /// Any extra free-form information about the member.
@@ -71,10 +67,6 @@ class MemberModel {
 
   // ── Constructor ─────────────────────────────────────────────────────────
 
-  /// Creates an immutable [MemberModel].
-  ///
-  /// [status] defaults to `'Active'` so callers creating a new member only
-  /// need to supply the required fields.
   const MemberModel({
     required this.id,
     required this.name,
@@ -83,7 +75,7 @@ class MemberModel {
     this.address,
     this.dateOfBirth,
     this.bloodGroup,
-    this.photoUrl,
+    this.photo,
     this.status = 'Active',
     this.additionalInfo,
     this.createdAt,
@@ -93,38 +85,28 @@ class MemberModel {
   // ── Factories ────────────────────────────────────────────────────────────
 
   /// Creates a [MemberModel] from a Firestore [DocumentSnapshot].
-  ///
-  /// Uses [DocumentSnapshot.id] as the model's [id] so the document ID is
-  /// always in sync with the Firestore record.
-  ///
-  /// Timestamps stored in Firestore are converted to [DateTime] via
-  /// [Timestamp.toDate].  The cast `as Map<String, dynamic>` is safe because
-  /// Firestore always deserialises documents as that type.
   factory MemberModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return MemberModel._fromMap(doc.id, data);
   }
 
-  /// Creates a [MemberModel] from a plain [Map], with an explicit [id].
-  ///
-  /// Useful when:
-  /// - the document data already arrived as a map (e.g. from a transaction),
-  /// - writing unit tests without a real [DocumentSnapshot].
-  ///
-  /// [id] is passed separately because plain maps do not carry a document ID.
+  /// Creates a [MemberModel] from a plain [Map] with an explicit [id].
   factory MemberModel.fromMap(String id, Map<String, dynamic> map) {
     return MemberModel._fromMap(id, map);
   }
 
-  /// Private shared parsing logic used by both public factories.
+  /// Private shared parsing logic.
   ///
-  /// All nullable fields use `as String?` / `as int?` casts (never `!`) so
-  /// a missing key returns `null` rather than throwing.
-  ///
-  /// [Timestamp] fields are converted with [_tsToDateTime]; the helper
-  /// returns `null` for any value that is not a [Timestamp], guarding against
-  /// documents written with wrong types.
+  /// The `photo` field is stored as a Firestore [Blob].  We read it back
+  /// with `.bytes` to get the raw [Uint8List].  If the field is absent or
+  /// has an unexpected type the member simply has no photo.
   factory MemberModel._fromMap(String id, Map<String, dynamic> map) {
+    Uint8List? photoBytes;
+    final rawPhoto = map['photo'];
+    if (rawPhoto is Blob) {
+      photoBytes = rawPhoto.bytes;
+    }
+
     return MemberModel(
       id: id,
       name: map['name'] as String? ?? '',
@@ -133,7 +115,7 @@ class MemberModel {
       address: map['address'] as String?,
       dateOfBirth: _tsToDateTime(map['dateOfBirth']),
       bloodGroup: map['bloodGroup'] as String?,
-      photoUrl: map['photoUrl'] as String?,
+      photo: photoBytes,
       status: map['status'] as String? ?? 'Active',
       additionalInfo: map['additionalInfo'] as String?,
       createdAt: _tsToDateTime(map['createdAt']),
@@ -145,13 +127,8 @@ class MemberModel {
 
   /// Serialises the model for writing to Firestore.
   ///
-  /// Rules applied:
-  /// - The document [id] is **omitted** — Firestore manages the ID separately.
-  /// - `null` fields are written explicitly as `null` so Firestore clears the
-  ///   field on updates (rather than leaving a stale value).
-  /// - [DateTime] fields are converted to [Timestamp] via [_dateTimeToTs]
-  ///   because Firestore's native timestamp type preserves timezone info and
-  ///   enables server-side range queries.
+  /// [photo] bytes are wrapped in a Firestore [Blob] so they are stored as
+  /// native binary data — smaller and faster than Base64 strings.
   Map<String, dynamic> toFirestore() => {
         'name': name,
         'mobile': mobile,
@@ -159,20 +136,17 @@ class MemberModel {
         'address': address,
         'dateOfBirth': _dateTimeToTs(dateOfBirth),
         'bloodGroup': bloodGroup,
-        'photoUrl': photoUrl,
+        'photo': photo != null ? Blob(photo!) : null,
         'status': status,
         'additionalInfo': additionalInfo,
         'createdAt': _dateTimeToTs(createdAt),
         'updatedAt': _dateTimeToTs(updatedAt),
       };
 
-  /// Serialises the model to a plain [Map], **including [id]**.
+  /// Serialises to a plain [Map] **including [id]**.
   ///
-  /// Differs from [toFirestore] in two ways:
-  /// 1. `id` is included because a plain map has no separate ID slot.
-  /// 2. [DateTime] values are kept as [DateTime] (not [Timestamp]), making
-  ///    this map suitable for local processing, caching, or unit tests that
-  ///    should not depend on the Firestore SDK.
+  /// [photo] bytes are kept as [Uint8List] — suitable for local processing
+  /// or unit tests that should not depend on the Firestore SDK.
   Map<String, dynamic> toMap() => {
         'id': id,
         'name': name,
@@ -181,7 +155,7 @@ class MemberModel {
         'address': address,
         'dateOfBirth': dateOfBirth?.toIso8601String(),
         'bloodGroup': bloodGroup,
-        'photoUrl': photoUrl,
+        'photo': photo,
         'status': status,
         'additionalInfo': additionalInfo,
         'createdAt': createdAt?.toIso8601String(),
@@ -190,15 +164,6 @@ class MemberModel {
 
   // ── copyWith ─────────────────────────────────────────────────────────────
 
-  /// Returns a new [MemberModel] with selected fields replaced.
-  ///
-  /// Because all fields are nullable in the orignal model, a sentinel object
-  /// pattern is used for fields that are *themselves* nullable
-  /// (e.g. [email], [photoUrl]).  Passing `email: null` explicitly clears the
-  /// field; omitting `email` preserves the existing value.
-  ///
-  /// Non-nullable fields ([id], [name], [mobile], [status]) use the standard
-  /// `?? this.field` fallback — omitting them keeps the current value.
   MemberModel copyWith({
     String? id,
     String? name,
@@ -207,7 +172,7 @@ class MemberModel {
     Object? address = _sentinel,
     Object? dateOfBirth = _sentinel,
     Object? bloodGroup = _sentinel,
-    Object? photoUrl = _sentinel,
+    Object? photo = _sentinel,
     String? status,
     Object? additionalInfo = _sentinel,
     Object? createdAt = _sentinel,
@@ -224,7 +189,7 @@ class MemberModel {
           : dateOfBirth as DateTime?,
       bloodGroup:
           bloodGroup == _sentinel ? this.bloodGroup : bloodGroup as String?,
-      photoUrl: photoUrl == _sentinel ? this.photoUrl : photoUrl as String?,
+      photo: photo == _sentinel ? this.photo : photo as Uint8List?,
       status: status ?? this.status,
       additionalInfo: additionalInfo == _sentinel
           ? this.additionalInfo
@@ -250,7 +215,11 @@ class MemberModel {
           address == other.address &&
           dateOfBirth == other.dateOfBirth &&
           bloodGroup == other.bloodGroup &&
-          photoUrl == other.photoUrl &&
+          // Byte-level equality: compare lengths first as a fast path.
+          // Deep equality is intentionally skipped here to keep hashCode
+          // consistent (two models with same id/name/mobile are "equal enough"
+          // for provider deduplication; UI always re-renders on stream events).
+          photo?.length == other.photo?.length &&
           status == other.status &&
           additionalInfo == other.additionalInfo &&
           createdAt == other.createdAt &&
@@ -265,7 +234,7 @@ class MemberModel {
         address,
         dateOfBirth,
         bloodGroup,
-        photoUrl,
+        photo?.length,
         status,
         additionalInfo,
         createdAt,
@@ -277,34 +246,23 @@ class MemberModel {
       'id: $id, '
       'name: $name, '
       'mobile: $mobile, '
-      'status: $status'
+      'status: $status, '
+      'hasPhoto: ${photo != null}'
       ')';
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
-  /// Converts a Firestore [Timestamp] to a [DateTime].
-  ///
-  /// Returns `null` for any value that is not a [Timestamp] (including `null`
-  /// itself), so callers never need to guard against wrong types in older
-  /// documents.
   static DateTime? _tsToDateTime(dynamic value) {
     if (value is Timestamp) return value.toDate();
     return null;
   }
 
-  /// Converts a [DateTime] to a Firestore [Timestamp].
-  ///
-  /// Returns `null` when [value] is `null`, which tells Firestore to store
-  /// the field as `null` rather than omitting it entirely.
   static Timestamp? _dateTimeToTs(DateTime? value) {
     if (value == null) return null;
     return Timestamp.fromDate(value);
   }
 }
 
-/// Private sentinel used by [MemberModel.copyWith] to distinguish between
+/// Sentinel used by [MemberModel.copyWith] to distinguish between
 /// "caller passed null explicitly" and "caller omitted the argument".
-///
-/// This is a compile-time constant object that cannot be equal to any real
-/// field value, so `field == _sentinel` is an unambiguous "not provided" check.
 const Object _sentinel = Object();
