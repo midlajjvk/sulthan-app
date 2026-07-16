@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'photo_viewer.dart';
 
 // ── Loading ───────────────────────────────────────────────────────────────────
 class LoadingView extends StatelessWidget {
@@ -221,12 +222,17 @@ class SectionHeader extends StatelessWidget {
 /// [name]       — member name; first character is used as the fallback initial.
 /// [radius]     — avatar radius (default 20, suitable for list tiles).
 /// [fontSize]   — font size of the fallback initial (default scales with radius).
+/// [heroTag]    — when provided, wraps the avatar in a [Hero] and tapping a
+///               photo opens the full-screen viewer via [showMemberPhotoViewer].
+///               Use a unique value per member, e.g. `'member-photo-\${id}'`.
+///               If null, no Hero is applied and tapping does nothing.
 class MemberAvatar extends StatelessWidget {
   final Uint8List? photoBytes;
   final String name;
   final double radius;
   final double? fontSize;
   final bool selected;
+  final String? heroTag;
 
   const MemberAvatar({
     super.key,
@@ -235,6 +241,7 @@ class MemberAvatar extends StatelessWidget {
     this.radius = 20,
     this.fontSize,
     this.selected = false,
+    this.heroTag,
   });
 
   @override
@@ -243,25 +250,41 @@ class MemberAvatar extends StatelessWidget {
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
     final effectiveFontSize = fontSize ?? (radius * 0.7);
 
+    final Widget avatar;
+
     if (photoBytes != null && photoBytes!.isNotEmpty) {
-      return CircleAvatar(
+      avatar = CircleAvatar(
         radius: radius,
         backgroundImage: MemoryImage(photoBytes!),
         backgroundColor: selected ? cs.primary : cs.primaryContainer,
       );
+    } else {
+      avatar = CircleAvatar(
+        radius: radius,
+        backgroundColor: selected ? cs.primary : cs.primaryContainer,
+        child: Text(
+          initial,
+          style: TextStyle(
+            color: selected ? cs.onPrimary : cs.onPrimaryContainer,
+            fontWeight: FontWeight.bold,
+            fontSize: effectiveFontSize,
+          ),
+        ),
+      );
     }
 
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: selected ? cs.primary : cs.primaryContainer,
-      child: Text(
-        initial,
-        style: TextStyle(
-          color: selected ? cs.onPrimary : cs.onPrimaryContainer,
-          fontWeight: FontWeight.bold,
-          fontSize: effectiveFontSize,
-        ),
-      ),
+    // No heroTag — return the plain avatar (no tap behaviour).
+    if (heroTag == null) return avatar;
+
+    // Has a heroTag — wrap in Hero and make the photo tappable.
+    final heroAvatar = Hero(tag: heroTag!, child: avatar);
+
+    // Only wire up the tap when there is actually a photo to show.
+    if (photoBytes == null || photoBytes!.isEmpty) return heroAvatar;
+
+    return GestureDetector(
+      onTap: () => showMemberPhotoViewer(context, photoBytes, heroTag!),
+      child: heroAvatar,
     );
   }
 }

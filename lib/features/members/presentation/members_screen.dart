@@ -188,6 +188,7 @@ class _MemberTileState extends State<_MemberTile> {
               name: m.name,
               radius: 20,
               selected: selected,
+              heroTag: 'member-photo-list-${m.id}',
             ),
             title: Text(m.name,
                 style:

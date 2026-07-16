@@ -62,6 +62,7 @@ class MemberDetailScreen extends ConsumerWidget {
                           name: m.name,
                           radius: 36,
                           fontSize: 28,
+                          heroTag: 'member-photo-${m.id}',
                         ),
                         const SizedBox(width: 16),
                         Expanded(
